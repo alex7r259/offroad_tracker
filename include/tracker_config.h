@@ -29,6 +29,16 @@ static constexpr uint16_t DEFAULT_NODE_ID = 1;
 static constexpr uint16_t BASE_NODE_ID = 0;
 static constexpr uint16_t MAX_NODE_COUNT = 50;
 
+enum TrackerRole : uint8_t {
+  ROLE_PARTICIPANT = 0,
+  ROLE_ORGANIZER = 1,
+  ROLE_AMBULANCE = 2,
+  ROLE_EVACUATION = 3,
+  ROLE_BASE = 4,
+};
+
+static constexpr uint8_t DEFAULT_NODE_ROLE = ROLE_PARTICIPANT;
+
 static constexpr uint8_t POSITION_TTL = 3;
 static constexpr uint8_t SOS_TTL = 5;
 

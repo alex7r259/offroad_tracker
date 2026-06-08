@@ -9,7 +9,7 @@ static constexpr int E220_RX_PIN = 27;  // ESP32 RX from E220 TXD
 static constexpr int E220_TX_PIN = 14;  // ESP32 TX to E220 RXD
 static constexpr int E220_AUX_PIN = 15;
 static constexpr uint32_t E220_UART_BAUD = 9600;
-static constexpr bool E220_RSSI_BYTE_ENABLED = true; // E220 appends RSSI byte when enabled in module config.
+static constexpr bool E220_RSSI_BYTE_ENABLED = true; // Set false if your E220 does not append RSSI bytes.
 
 // ATGM336H wiring: module TX -> ESP32 GPIO16, module RX -> ESP32 GPIO17.
 static constexpr int GPS_RX_PIN = 16;  // ESP32 RX from GPS TX
@@ -36,4 +36,9 @@ static constexpr uint32_t DEFAULT_POSITION_INTERVAL_MS = 5000;
 static constexpr uint32_t SOS_REPEAT_INTERVAL_MS = 1500;
 static constexpr uint32_t BATTERY_READ_INTERVAL_MS = 30000;
 static constexpr uint32_t NODE_OFFLINE_TIMEOUT_MS = 120000;
+static constexpr uint32_t NODE_PURGE_TIMEOUT_MS = 1800000;
 static constexpr uint32_t WEB_STATUS_PUSH_INTERVAL_MS = 1000;
+
+static constexpr int16_t RELAY_WEAK_RSSI_DBM = -90;
+static constexpr uint8_t RELAY_ALWAYS_UNTIL_HOPS = 2;
+static constexpr size_t RELAY_QUEUE_LENGTH = 16;

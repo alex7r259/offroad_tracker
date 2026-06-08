@@ -23,7 +23,7 @@ struct __attribute__((packed)) TrackerPacket {
   uint32_t gpsTime;
   int32_t latE7;
   int32_t lonE7;
-  int16_t altitudeDm;
+  int32_t altitudeDm;
   uint16_t speedCentiKmh;
   uint16_t courseCentideg;
   uint16_t batteryMv;
@@ -32,6 +32,8 @@ struct __attribute__((packed)) TrackerPacket {
   uint16_t flags;
   uint8_t ttl;
   uint8_t hops;
+  uint8_t linkQuality;
+  uint16_t sosSequence;
   uint16_t crc;
 };
 
@@ -47,6 +49,10 @@ struct NodeInfo {
   int16_t rssi = 0;
   uint8_t hops = 0;
   uint16_t flags = 0;
+  uint32_t lastSequence = 0;
+  uint32_t packetsReceived = 0;
+  uint32_t packetsMissed = 0;
+  uint8_t linkQuality = 0;
   bool used = false;
 };
 
@@ -76,6 +82,8 @@ static constexpr uint32_t SEEN_CACHE_TTL_MS = 300000;
 NodeInfo nodes[MAX_NODE_COUNT];
 SeenPacket seenPackets[SEEN_CACHE_SIZE];
 SemaphoreHandle_t stateMutex;
+SemaphoreHandle_t radioTxMutex;
+QueueHandle_t relayQueue;
 
 uint16_t nodeId = DEFAULT_NODE_ID;
 String callsign = "CAR-1";
@@ -83,6 +91,8 @@ uint32_t positionIntervalMs = DEFAULT_POSITION_INTERVAL_MS;
 uint8_t configuredPositionTtl = POSITION_TTL;
 uint8_t configuredSosTtl = SOS_TTL;
 uint32_t sequenceCounter = 0;
+uint16_t sosSequenceCounter = 0;
+uint16_t activeSosSequence = 0;
 
 volatile bool buttonInterrupt = false;
 bool sosActive = false;
@@ -160,8 +170,7 @@ uint32_t gpsTimePacked() {
   if (!gps.date.isValid() || !gps.time.isValid()) {
     return 0;
   }
-  return gps.date.year() % 100 * 100000000UL + gps.date.month() * 1000000UL +
-         gps.date.day() * 10000UL + gps.time.hour() * 100UL + gps.time.minute();
+  return gps.time.hour() * 10000UL + gps.time.minute() * 100UL + gps.time.second();
 }
 
 uint16_t currentFlags() {
@@ -189,7 +198,7 @@ TrackerPacket buildPacket(PacketType type, uint16_t targetId = 0) {
   packet.gpsTime = gpsTimePacked();
   packet.latE7 = hasGpsFix() ? static_cast<int32_t>(gps.location.lat() * 10000000.0) : 0;
   packet.lonE7 = hasGpsFix() ? static_cast<int32_t>(gps.location.lng() * 10000000.0) : 0;
-  packet.altitudeDm = gps.altitude.isValid() ? static_cast<int16_t>(gps.altitude.meters() * 10.0) : 0;
+  packet.altitudeDm = gps.altitude.isValid() ? static_cast<int32_t>(gps.altitude.meters() * 10.0) : 0;
   packet.speedCentiKmh = gps.speed.isValid() ? static_cast<uint16_t>(gps.speed.kmph() * 100.0) : 0;
   packet.courseCentideg = gps.course.isValid() ? static_cast<uint16_t>(gps.course.deg() * 100.0) : 0;
   packet.batteryMv = batteryMv;
@@ -198,15 +207,23 @@ TrackerPacket buildPacket(PacketType type, uint16_t targetId = 0) {
   packet.flags = currentFlags();
   packet.ttl = type == PACKET_SOS ? configuredSosTtl : configuredPositionTtl;
   packet.hops = 0;
+  packet.linkQuality = 100;
+  packet.sosSequence = activeSosSequence;
+  if (type == PACKET_SOS && activeSosSequence == 0) {
+    activeSosSequence = ++sosSequenceCounter;
+    packet.sosSequence = activeSosSequence;
+  }
   packet.crc = packetCrc(packet);
   return packet;
 }
 
 void sendPacket(const TrackerPacket &packet) {
+  xSemaphoreTake(radioTxMutex, portMAX_DELAY);
   waitRadioReady();
   RadioSerial.write(reinterpret_cast<const uint8_t *>(&packet), sizeof(packet));
   RadioSerial.flush();
   lastTxMs = millis();
+  xSemaphoreGive(radioTxMutex);
 }
 
 bool isDuplicate(uint16_t sourceNodeId, uint32_t sequence) {
@@ -260,6 +277,15 @@ void updateNodeTable(const TrackerPacket &packet, int16_t rssi = 0) {
   }
 
   NodeInfo &node = nodes[targetSlot];
+  const bool sameNode = node.used && node.id == packet.nodeId;
+  if (sameNode && packet.sequence > node.lastSequence + 1) {
+    node.packetsMissed += packet.sequence - node.lastSequence - 1;
+  }
+  if (!sameNode) {
+    node.packetsReceived = 0;
+    node.packetsMissed = 0;
+  }
+
   node.used = true;
   node.id = packet.nodeId;
   node.latE7 = packet.latE7;
@@ -272,17 +298,40 @@ void updateNodeTable(const TrackerPacket &packet, int16_t rssi = 0) {
   node.rssi = rssi;
   node.hops = packet.hops;
   node.flags = packet.flags;
+  node.lastSequence = packet.sequence;
+  node.packetsReceived++;
+  const uint32_t totalPackets = node.packetsReceived + node.packetsMissed;
+  node.linkQuality = totalPackets > 0 ? static_cast<uint8_t>((node.packetsReceived * 100UL) / totalPackets) : 0;
 }
 
-void relayPacket(TrackerPacket packet) {
-  if (packet.ttl == 0 || packet.nodeId == nodeId) {
+bool shouldRelayPacket(const TrackerPacket &packet, int16_t rssi) {
+  if (packet.ttl == 0 || packet.nodeId == nodeId || packet.type == PACKET_ACK_SOS) {
+    return false;
+  }
+
+  const bool rssiUnknown = rssi == 0;
+  return packet.hops < RELAY_ALWAYS_UNTIL_HOPS || rssiUnknown || rssi < RELAY_WEAK_RSSI_DBM;
+}
+
+void enqueueRelayPacket(TrackerPacket packet, int16_t rssi) {
+  if (!shouldRelayPacket(packet, rssi)) {
     return;
   }
   packet.ttl--;
   packet.hops++;
   packet.crc = packetCrc(packet);
-  delay(random(25, 140));
-  sendPacket(packet);
+  xQueueSend(relayQueue, &packet, 0);
+}
+
+void purgeStaleNodes() {
+  const uint32_t now = millis();
+  xSemaphoreTake(stateMutex, portMAX_DELAY);
+  for (NodeInfo &node : nodes) {
+    if (node.used && now - node.lastSeen > NODE_PURGE_TIMEOUT_MS) {
+      node = NodeInfo{};
+    }
+  }
+  xSemaphoreGive(stateMutex);
 }
 
 void handleIncomingPacket(const TrackerPacket &packet, int16_t rssi = 0) {
@@ -304,7 +353,7 @@ void handleIncomingPacket(const TrackerPacket &packet, int16_t rssi = 0) {
     sendPacket(ack);
   }
 
-  relayPacket(packet);
+  enqueueRelayPacket(packet, rssi);
 }
 
 void IRAM_ATTR onButtonInterrupt() {
@@ -327,6 +376,9 @@ void processButton() {
     xSemaphoreTake(stateMutex, portMAX_DELAY);
     sosActive = !sosActive;
     sosAcked = false;
+    if (!sosActive) {
+      activeSosSequence = 0;
+    }
     xSemaphoreGive(stateMutex);
   }
 }
@@ -398,6 +450,9 @@ void handleSosToggle() {
   xSemaphoreTake(stateMutex, portMAX_DELAY);
   sosActive = !sosActive;
   sosAcked = false;
+  if (!sosActive) {
+    activeSosSequence = 0;
+  }
   xSemaphoreGive(stateMutex);
   server.sendHeader("Location", "/");
   server.send(303);
@@ -405,7 +460,7 @@ void handleSosToggle() {
 
 void handleNodes() {
   String page = htmlHeader("Узлы сети");
-  page += "<h1>Узлы сети</h1><table><tr><th>ID</th><th>Lat</th><th>Lon</th><th>Speed</th><th>Battery</th><th>Sat</th><th>RSSI</th><th>Hops</th><th>Age</th></tr>";
+  page += "<h1>Узлы сети</h1><table><tr><th>ID</th><th>Lat</th><th>Lon</th><th>Speed</th><th>Battery</th><th>Sat</th><th>RSSI</th><th>LQ</th><th>Hops</th><th>Age</th></tr>";
   xSemaphoreTake(stateMutex, portMAX_DELAY);
   for (const NodeInfo &node : nodes) {
     if (!node.used) {
@@ -416,7 +471,8 @@ void handleNodes() {
             String(node.latE7 / 10000000.0, 7) + "</td><td>" + String(node.lonE7 / 10000000.0, 7) +
             "</td><td>" + String(node.speedCentiKmh / 100.0, 1) + "</td><td>" + String(node.batteryPercent) +
             "%</td><td>" + String(node.satellites) + "</td><td>" + String(node.rssi) + "</td><td>" +
-            String(node.hops) + "</td><td>" + String((millis() - node.lastSeen) / 1000) + "s</td></tr>";
+            String(node.linkQuality) + "%</td><td>" + String(node.hops) + "</td><td>" +
+            String((millis() - node.lastSeen) / 1000) + "s</td></tr>";
   }
   xSemaphoreGive(stateMutex);
   page += "</table><p><a href='/'>Назад</a></p></body></html>";
@@ -456,12 +512,24 @@ void gpsTask(void *) {
 void radioRxTask(void *) {
   static constexpr size_t radioFrameSize =
       sizeof(TrackerPacket) + (E220_RSSI_BYTE_ENABLED ? 1 : 0);
+  static constexpr uint8_t magicLo = PACKET_MAGIC & 0xFF;
+  static constexpr uint8_t magicHi = PACKET_MAGIC >> 8;
   uint8_t buffer[radioFrameSize];
   size_t offset = 0;
 
   for (;;) {
     while (RadioSerial.available()) {
-      buffer[offset++] = RadioSerial.read();
+      const uint8_t byte = RadioSerial.read();
+      if (offset == 0 && byte != magicLo) {
+        continue;
+      }
+      if (offset == 1 && byte != magicHi) {
+        offset = byte == magicLo ? 1 : 0;
+        buffer[0] = magicLo;
+        continue;
+      }
+
+      buffer[offset++] = byte;
       if (offset == radioFrameSize) {
         TrackerPacket packet{};
         memcpy(&packet, buffer, sizeof(packet));
@@ -471,6 +539,16 @@ void radioRxTask(void *) {
       }
     }
     vTaskDelay(pdMS_TO_TICKS(5));
+  }
+}
+
+void relayTxTask(void *) {
+  TrackerPacket packet{};
+  for (;;) {
+    if (xQueueReceive(relayQueue, &packet, portMAX_DELAY) == pdTRUE) {
+      vTaskDelay(pdMS_TO_TICKS(random(25, 140)));
+      sendPacket(packet);
+    }
   }
 }
 
@@ -504,6 +582,7 @@ void batteryTask(void *) {
   for (;;) {
     if (millis() - lastBatteryReadMs >= BATTERY_READ_INTERVAL_MS) {
       readBattery();
+      purgeStaleNodes();
       lastBatteryReadMs = millis();
     }
     vTaskDelay(pdMS_TO_TICKS(1000));
@@ -522,6 +601,8 @@ void setup() {
   delay(200);
   randomSeed(esp_random());
   stateMutex = xSemaphoreCreateMutex();
+  radioTxMutex = xSemaphoreCreateMutex();
+  relayQueue = xQueueCreate(RELAY_QUEUE_LENGTH, sizeof(TrackerPacket));
 
   loadSettings();
 
@@ -540,6 +621,7 @@ void setup() {
   xTaskCreatePinnedToCore(gpsTask, "gps", 4096, nullptr, 2, nullptr, 1);
   xTaskCreatePinnedToCore(radioRxTask, "radio_rx", 4096, nullptr, 3, nullptr, 1);
   xTaskCreatePinnedToCore(radioTxTask, "radio_tx", 4096, nullptr, 2, nullptr, 1);
+  xTaskCreatePinnedToCore(relayTxTask, "relay_tx", 4096, nullptr, 2, nullptr, 1);
   xTaskCreatePinnedToCore(batteryTask, "battery", 2048, nullptr, 1, nullptr, 1);
   xTaskCreatePinnedToCore(webTask, "web", 4096, nullptr, 1, nullptr, 0);
 

@@ -66,6 +66,17 @@ struct SeenPacket {
   uint32_t seenAt = 0;
 };
 
+struct GpsSnapshot {
+  bool fix = false;
+  double lat = 0.0;
+  double lon = 0.0;
+  float speedKmph = 0.0F;
+  float courseDeg = 0.0F;
+  float altitudeMeters = 0.0F;
+  uint8_t satellites = 0;
+  uint32_t timePacked = 0;
+};
+
 enum PacketType : uint8_t {
   PACKET_POSITION = 1,
   PACKET_SOS = 2,
@@ -85,9 +96,12 @@ static constexpr uint32_t SEEN_CACHE_TTL_MS = 300000;
 
 NodeInfo nodes[MAX_NODE_COUNT];
 SeenPacket seenPackets[SEEN_CACHE_SIZE];
+GpsSnapshot gpsSnapshot;
 SemaphoreHandle_t stateMutex;
+SemaphoreHandle_t gpsMutex;
 SemaphoreHandle_t radioTxMutex;
 QueueHandle_t relayQueue;
+QueueHandle_t ackQueue;
 portMUX_TYPE seqMux = portMUX_INITIALIZER_UNLOCKED;
 
 uint16_t nodeId = DEFAULT_NODE_ID;
@@ -105,12 +119,14 @@ bool sosActive = false;
 bool sosAcked = false;
 uint32_t lastButtonChangeMs = 0;
 uint32_t lastPositionSentMs = 0;
+uint32_t nextPositionDueMs = 0;
 uint32_t lastSosSentMs = 0;
 uint32_t lastBatteryReadMs = 0;
 uint32_t lastTxMs = 0;
 uint16_t batteryMv = 0;
 uint8_t batteryPercent = 0;
 uint32_t relayDrops = 0;
+uint32_t ackDrops = 0;
 
 uint16_t crc16Ccitt(const uint8_t *data, size_t length) {
   uint16_t crc = 0xFFFF;
@@ -169,15 +185,34 @@ void readBattery() {
   xSemaphoreGive(stateMutex);
 }
 
-bool hasGpsFix() {
-  return gps.location.isValid() && gps.location.age() < 5000 && gps.satellites.value() >= 3;
-}
-
-uint32_t gpsTimePacked() {
+uint32_t gpsTimePackedFromParser() {
   if (!gps.date.isValid() || !gps.time.isValid()) {
     return 0;
   }
   return gps.time.hour() * 10000UL + gps.time.minute() * 100UL + gps.time.second();
+}
+
+void updateGpsSnapshot() {
+  GpsSnapshot snapshot{};
+  snapshot.fix = gps.location.isValid() && gps.location.age() < 5000 && gps.satellites.value() >= 3;
+  snapshot.lat = snapshot.fix ? gps.location.lat() : 0.0;
+  snapshot.lon = snapshot.fix ? gps.location.lng() : 0.0;
+  snapshot.speedKmph = gps.speed.isValid() ? gps.speed.kmph() : 0.0F;
+  snapshot.courseDeg = gps.course.isValid() ? gps.course.deg() : 0.0F;
+  snapshot.altitudeMeters = gps.altitude.isValid() ? gps.altitude.meters() : 0.0F;
+  snapshot.satellites = gps.satellites.isValid() ? gps.satellites.value() : 0;
+  snapshot.timePacked = gpsTimePackedFromParser();
+
+  xSemaphoreTake(gpsMutex, portMAX_DELAY);
+  gpsSnapshot = snapshot;
+  xSemaphoreGive(gpsMutex);
+}
+
+GpsSnapshot readGpsSnapshot() {
+  xSemaphoreTake(gpsMutex, portMAX_DELAY);
+  const GpsSnapshot snapshot = gpsSnapshot;
+  xSemaphoreGive(gpsMutex);
+  return snapshot;
 }
 
 uint32_t nextSequence() {
@@ -187,8 +222,29 @@ uint32_t nextSequence() {
   return next;
 }
 
+void setSosActive(bool active, bool persist = true) {
+  xSemaphoreTake(stateMutex, portMAX_DELAY);
+  sosActive = active;
+  sosAcked = false;
+  if (!sosActive) {
+    activeSosSequence = 0;
+  }
+  xSemaphoreGive(stateMutex);
+
+  if (persist) {
+    prefs.putBool("sos", active);
+  }
+}
+
+void toggleSos() {
+  xSemaphoreTake(stateMutex, portMAX_DELAY);
+  const bool nextSos = !sosActive;
+  xSemaphoreGive(stateMutex);
+  setSosActive(nextSos);
+}
+
 TrackerPacket buildPacket(PacketType type, uint16_t targetId = 0) {
-  const bool gpsFix = hasGpsFix();
+  const GpsSnapshot gps = readGpsSnapshot();
 
   xSemaphoreTake(stateMutex, portMAX_DELAY);
   if (type == PACKET_SOS && activeSosSequence == 0) {
@@ -208,7 +264,7 @@ TrackerPacket buildPacket(PacketType type, uint16_t targetId = 0) {
   }
   xSemaphoreGive(stateMutex);
 
-  if (gpsFix) {
+  if (gps.fix) {
     flagsSnapshot |= FLAG_GPS_FIX;
   }
 
@@ -219,15 +275,15 @@ TrackerPacket buildPacket(PacketType type, uint16_t targetId = 0) {
   packet.nodeId = nodeId;
   packet.targetId = targetId;
   packet.sequence = nextSequence();
-  packet.gpsTime = gpsTimePacked();
-  packet.latE7 = gpsFix ? static_cast<int32_t>(gps.location.lat() * 10000000.0) : 0;
-  packet.lonE7 = gpsFix ? static_cast<int32_t>(gps.location.lng() * 10000000.0) : 0;
-  packet.altitudeDm = gps.altitude.isValid() ? static_cast<int32_t>(gps.altitude.meters() * 10.0) : 0;
-  packet.speedCentiKmh = gps.speed.isValid() ? static_cast<uint16_t>(gps.speed.kmph() * 100.0) : 0;
-  packet.courseCentideg = gps.course.isValid() ? static_cast<uint16_t>(gps.course.deg() * 100.0) : 0;
+  packet.gpsTime = gps.timePacked;
+  packet.latE7 = gps.fix ? static_cast<int32_t>(gps.lat * 10000000.0) : 0;
+  packet.lonE7 = gps.fix ? static_cast<int32_t>(gps.lon * 10000000.0) : 0;
+  packet.altitudeDm = static_cast<int32_t>(gps.altitudeMeters * 10.0F);
+  packet.speedCentiKmh = static_cast<uint16_t>(gps.speedKmph * 100.0F);
+  packet.courseCentideg = static_cast<uint16_t>(gps.courseDeg * 100.0F);
   packet.batteryMv = batteryMvSnapshot;
   packet.batteryPercent = batteryPercentSnapshot;
-  packet.satellites = gps.satellites.isValid() ? gps.satellites.value() : 0;
+  packet.satellites = gps.satellites;
   packet.flags = flagsSnapshot;
   packet.ttl = ttlSnapshot;
   packet.hops = 0;
@@ -246,6 +302,11 @@ void sendPacket(const TrackerPacket &packet) {
   RadioSerial.flush();
   lastTxMs = millis();
   xSemaphoreGive(radioTxMutex);
+}
+
+uint32_t nextPositionDelayMs(uint32_t baseIntervalMs) {
+  const int32_t jitter = static_cast<int32_t>(baseIntervalMs / 10);
+  return baseIntervalMs + random(-jitter, jitter + 1);
 }
 
 bool isDuplicate(uint16_t sourceNodeId, uint32_t sequence) {
@@ -332,7 +393,7 @@ void updateNodeTable(const TrackerPacket &packet, int16_t rssi = 0) {
 }
 
 bool shouldRelayPacket(const TrackerPacket &packet, int16_t rssi) {
-  if (packet.ttl == 0 || packet.nodeId == nodeId || packet.type == PACKET_ACK_SOS) {
+  if (packet.ttl <= 1 || packet.nodeId == nodeId || packet.type == PACKET_ACK_SOS) {
     return false;
   }
 
@@ -350,6 +411,14 @@ void enqueueRelayPacket(TrackerPacket packet, int16_t rssi) {
   if (xQueueSend(relayQueue, &packet, 0) != pdTRUE) {
     xSemaphoreTake(stateMutex, portMAX_DELAY);
     relayDrops++;
+    xSemaphoreGive(stateMutex);
+  }
+}
+
+void enqueueAckPacket(const TrackerPacket &packet) {
+  if (xQueueSend(ackQueue, &packet, 0) != pdTRUE) {
+    xSemaphoreTake(stateMutex, portMAX_DELAY);
+    ackDrops++;
     xSemaphoreGive(stateMutex);
   }
 }
@@ -383,7 +452,7 @@ void handleIncomingPacket(const TrackerPacket &packet, int16_t rssi = 0) {
     ack.ttl = SOS_TTL;
     ack.sosSequence = packet.sosSequence;
     ack.crc = packetCrc(ack);
-    sendPacket(ack);
+    enqueueAckPacket(ack);
   }
 
   enqueueRelayPacket(packet, rssi);
@@ -406,13 +475,7 @@ void processButton() {
   lastButtonChangeMs = now;
 
   if (digitalRead(SOS_BUTTON_PIN) == LOW) {
-    xSemaphoreTake(stateMutex, portMAX_DELAY);
-    sosActive = !sosActive;
-    sosAcked = false;
-    if (!sosActive) {
-      activeSosSequence = 0;
-    }
-    xSemaphoreGive(stateMutex);
+    toggleSos();
   }
 }
 
@@ -428,26 +491,29 @@ String htmlHeader(const String &title) {
 }
 
 void handleRoot() {
+  const GpsSnapshot gps = readGpsSnapshot();
+
   xSemaphoreTake(stateMutex, portMAX_DELAY);
-  const bool fix = hasGpsFix();
   const bool sos = sosActive;
   const bool ack = sosAcked;
   const uint16_t batMv = batteryMv;
   const uint8_t batPct = batteryPercent;
   const uint32_t lastTx = lastTxMs;
   const uint32_t drops = relayDrops;
+  const uint32_t ackDropSnapshot = ackDrops;
   xSemaphoreGive(stateMutex);
 
   String page = htmlHeader("Offroad Tracker");
   page += "<h1>Offroad Tracker v1.0</h1>";
   page += String("<p>ID: <b>") + String(nodeId) + "</b> / " + callsign + " / role " + String(nodeRole) + "</p>";
   page += String("<p>Батарея: <b>") + String(batMv) + " mV</b> (" + String(batPct) + "%)</p>";
-  page += String("<p>GPS Fix: <b class='") + String(fix ? "ok" : "bad") + "'>" +
-          String(fix ? "есть" : "нет") + "</b>, спутники: " + String(gps.satellites.value()) + "</p>";
+  page += String("<p>GPS Fix: <b class='") + String(gps.fix ? "ok" : "bad") + "'>" +
+          String(gps.fix ? "есть" : "нет") + "</b>, спутники: " + String(gps.satellites) + "</p>";
   page += String("<p>SOS: <b class='") + String(sos ? "bad" : "ok") + "'>" +
           String(sos ? "АКТИВЕН" : "выключен") + "</b> ACK: " + String(ack ? "да" : "нет") + "</p>";
   page += String("<p>Последняя передача: ") + String(lastTx == 0 ? 0 : (millis() - lastTx) / 1000) + " сек назад</p>";
-  page += String("<p>Uptime: ") + String(millis() / 1000UL) + " сек, relay drops: " + String(drops) + "</p>";
+  page += String("<p>Uptime: ") + String(millis() / 1000UL) + " сек, relay drops: " + String(drops) +
+          ", ack drops: " + String(ackDropSnapshot) + "</p>";
   page += "<form method='post' action='/sos'><button>Переключить SOS</button></form>";
   page += "<p><a href='/settings'>Настройки</a> · <a href='/nodes'>Узлы сети</a></p></body></html>";
   server.send(200, "text/html", page);
@@ -486,20 +552,28 @@ void handleSaveSettings() {
 }
 
 void handleSosToggle() {
-  xSemaphoreTake(stateMutex, portMAX_DELAY);
-  sosActive = !sosActive;
-  sosAcked = false;
-  if (!sosActive) {
-    activeSosSequence = 0;
-  }
-  xSemaphoreGive(stateMutex);
+  toggleSos();
   server.sendHeader("Location", "/");
   server.send(303);
 }
 
 void handleNodes() {
+  const GpsSnapshot selfGps = readGpsSnapshot();
+  xSemaphoreTake(stateMutex, portMAX_DELAY);
+  const uint16_t selfBatteryMv = batteryMv;
+  const uint8_t selfBatteryPercent = batteryPercent;
+  const uint8_t selfRole = nodeRole;
+  const bool selfSos = sosActive;
+  xSemaphoreGive(stateMutex);
+
   String page = htmlHeader("Узлы сети");
   page += "<h1>Узлы сети</h1><table><tr><th>ID</th><th>Lat</th><th>Lon</th><th>Speed</th><th>Battery</th><th>Sat</th><th>Role</th><th>RSSI</th><th>LQ</th><th>Hops</th><th>Uptime</th><th>Age</th></tr>";
+  page += String("<tr") + (selfSos ? " class='sos'" : "") + "><td>SELF " + String(nodeId) + "</td><td>" +
+          String(selfGps.lat, 7) + "</td><td>" + String(selfGps.lon, 7) + "</td><td>" +
+          String(selfGps.speedKmph, 1) + "</td><td>" + String(selfBatteryPercent) + "% (" +
+          String(selfBatteryMv) + "mV)</td><td>" + String(selfGps.satellites) + "</td><td>" +
+          String(selfRole) + "</td><td>self</td><td>100%</td><td>0</td><td>" +
+          String(millis() / 1000UL) + "s</td><td>0s</td></tr>";
   xSemaphoreTake(stateMutex, portMAX_DELAY);
   for (const NodeInfo &node : nodes) {
     if (!node.used) {
@@ -527,12 +601,14 @@ void loadSettings() {
   configuredPositionTtl = prefs.getUChar("pttl", POSITION_TTL);
   configuredSosTtl = prefs.getUChar("sttl", SOS_TTL);
   nodeRole = prefs.getUChar("role", nodeId == BASE_NODE_ID ? ROLE_BASE : DEFAULT_NODE_ROLE);
+  setSosActive(prefs.getBool("sos", false), false);
 }
 
 void startWebUi() {
   String ssid = String("Tracker-") + String(nodeId, HEX);
+  String password = String(AP_PASSWORD_PREFIX) + String(nodeId);
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(ssid.c_str());
+  WiFi.softAP(ssid.c_str(), password.c_str());
   server.on("/", HTTP_GET, handleRoot);
   server.on("/settings", HTTP_GET, handleSettings);
   server.on("/settings", HTTP_POST, handleSaveSettings);
@@ -546,6 +622,7 @@ void gpsTask(void *) {
     while (GPSSerial.available()) {
       gps.encode(GPSSerial.read());
     }
+    updateGpsSnapshot();
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
@@ -622,13 +699,23 @@ void relayTxTask(void *) {
   }
 }
 
+void ackTxTask(void *) {
+  TrackerPacket packet{};
+  for (;;) {
+    if (xQueueReceive(ackQueue, &packet, portMAX_DELAY) == pdTRUE) {
+      sendPacket(packet);
+    }
+  }
+}
+
 void radioTxTask(void *) {
   for (;;) {
     const uint32_t now = millis();
     processButton();
 
     xSemaphoreTake(stateMutex, portMAX_DELAY);
-    const bool shouldSendPosition = now - lastPositionSentMs >= positionIntervalMs;
+    const uint32_t intervalSnapshot = positionIntervalMs;
+    const bool shouldSendPosition = nextPositionDueMs == 0 || static_cast<int32_t>(now - nextPositionDueMs) >= 0;
     const bool shouldSendSos = sosActive && !sosAcked && now - lastSosSentMs >= SOS_REPEAT_INTERVAL_MS;
     xSemaphoreGive(stateMutex);
 
@@ -636,6 +723,7 @@ void radioTxTask(void *) {
       TrackerPacket packet = buildPacket(PACKET_POSITION);
       sendPacket(packet);
       lastPositionSentMs = now;
+      nextPositionDueMs = now + nextPositionDelayMs(intervalSnapshot);
     }
 
     if (shouldSendSos) {
@@ -671,8 +759,16 @@ void setup() {
   delay(200);
   randomSeed(esp_random());
   stateMutex = xSemaphoreCreateMutex();
+  gpsMutex = xSemaphoreCreateMutex();
   radioTxMutex = xSemaphoreCreateMutex();
   relayQueue = xQueueCreate(RELAY_QUEUE_LENGTH, sizeof(TrackerPacket));
+  ackQueue = xQueueCreate(ACK_QUEUE_LENGTH, sizeof(TrackerPacket));
+
+  if (!stateMutex || !gpsMutex || !radioTxMutex || !relayQueue || !ackQueue) {
+    Serial.println("Init failed: FreeRTOS resource allocation");
+    delay(1000);
+    ESP.restart();
+  }
 
   loadSettings();
 
@@ -684,20 +780,25 @@ void setup() {
   readBattery();
 
   setE220NormalMode();
+  RadioSerial.setRxBufferSize(RADIO_RX_BUFFER_SIZE);
   RadioSerial.begin(E220_UART_BAUD, SERIAL_8N1, E220_RX_PIN, E220_TX_PIN);
   GPSSerial.begin(GPS_UART_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  updateGpsSnapshot();
   startWebUi();
 
   xTaskCreatePinnedToCore(gpsTask, "gps", 4096, nullptr, 2, nullptr, 1);
   xTaskCreatePinnedToCore(radioRxTask, "radio_rx", 4096, nullptr, 3, nullptr, 1);
   xTaskCreatePinnedToCore(radioTxTask, "radio_tx", 4096, nullptr, 2, nullptr, 1);
   xTaskCreatePinnedToCore(relayTxTask, "relay_tx", 4096, nullptr, 2, nullptr, 1);
+  xTaskCreatePinnedToCore(ackTxTask, "ack_tx", 4096, nullptr, 3, nullptr, 1);
   xTaskCreatePinnedToCore(batteryTask, "battery", 2048, nullptr, 1, nullptr, 1);
   xTaskCreatePinnedToCore(webTask, "web", 4096, nullptr, 1, nullptr, 0);
 
   Serial.println("Offroad Tracker v1.0 started");
   Serial.print("AP SSID: Tracker-");
   Serial.println(String(nodeId, HEX));
+  Serial.print("AP password: ");
+  Serial.println(String(AP_PASSWORD_PREFIX) + String(nodeId));
 }
 
 void loop() {

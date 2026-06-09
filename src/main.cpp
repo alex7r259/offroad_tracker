@@ -393,7 +393,11 @@ void updateNodeTable(const TrackerPacket &packet, int16_t rssi = 0) {
 }
 
 bool shouldRelayPacket(const TrackerPacket &packet, int16_t rssi) {
-  if (packet.ttl <= 1 || packet.nodeId == nodeId || packet.type == PACKET_ACK_SOS) {
+  if (nodeRole != ROLE_BASE && nodeRole != ROLE_RELAY){
+    return false;
+  }
+  
+  if (packet.ttl <= 1 || packet.nodeId == nodeId) {
     return false;
   }
 
@@ -408,7 +412,7 @@ void enqueueRelayPacket(TrackerPacket packet, int16_t rssi) {
   packet.ttl--;
   packet.hops++;
   packet.crc = packetCrc(packet);
-  if (xQueueSend(relayQueue, &packet, 0) != pdTRUE) {
+  if (xQueueSend(relayQueue, &packet, pdMS_TO_TICKS(20)) != pdTRUE) {
     xSemaphoreTake(stateMutex, portMAX_DELAY);
     relayDrops++;
     xSemaphoreGive(stateMutex);
@@ -527,8 +531,8 @@ void handleSettings() {
   page += String("Интервал передачи, мс: <input name='interval' type='number' min='1000' value='") + String(positionIntervalMs) + "'><br>";
   page += String("TTL POSITION: <input name='pttl' type='number' min='1' max='10' value='") + String(configuredPositionTtl) + "'><br>";
   page += String("TTL SOS: <input name='sttl' type='number' min='1' max='10' value='") + String(configuredSosTtl) + "'><br>";
-  page += String("Роль: <input name='role' type='number' min='0' max='4' value='") + String(nodeRole) + "'> ";
-  page += "0=participant, 1=organizer, 2=ambulance, 3=evacuation, 4=base<br>";
+  page += String("Роль: <input name='role' type='number' min='0' max='5' value='") + String(nodeRole) + "'> ";
+  page += "0=participant, 1=organizer, 2=ambulance, 3=evacuation, 4=base, 5=relay<br>";
   page += "<button>Сохранить</button></form><p><a href='/'>Назад</a></p></body></html>";
   server.send(200, "text/html", page);
 }
@@ -539,7 +543,7 @@ void handleSaveSettings() {
   positionIntervalMs = max(1000UL, static_cast<uint32_t>(server.arg("interval").toInt()));
   configuredPositionTtl = constrain(server.arg("pttl").toInt(), 1, 10);
   configuredSosTtl = constrain(server.arg("sttl").toInt(), 1, 10);
-  nodeRole = constrain(server.arg("role").toInt(), 0, 4);
+  nodeRole = constrain(server.arg("role").toInt(), 0, 5);
 
   prefs.putUShort("node_id", nodeId);
   prefs.putString("callsign", callsign);
@@ -723,7 +727,9 @@ void radioTxTask(void *) {
       TrackerPacket packet = buildPacket(PACKET_POSITION);
       sendPacket(packet);
       lastPositionSentMs = now;
-      nextPositionDueMs = now + nextPositionDelayMs(intervalSnapshot);
+	  xSemaphoreTake(stateMutex, portMAX_DELAY);
+	  nextPositionDueMs = now + nextPositionDelayMs(intervalSnapshot);
+	  xSemaphoreGive(stateMutex);
     }
 
     if (shouldSendSos) {

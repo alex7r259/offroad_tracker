@@ -52,7 +52,7 @@ static constexpr uint32_t WEB_STATUS_PUSH_INTERVAL_MS = 1000;
 
 static constexpr int16_t RELAY_WEAK_RSSI_DBM = -90;
 static constexpr uint8_t RELAY_ALWAYS_UNTIL_HOPS = 2;
-static constexpr size_t RELAY_QUEUE_LENGTH = 16;
+static constexpr size_t RELAY_QUEUE_LENGTH = 32;
 static constexpr size_t ACK_QUEUE_LENGTH = 8;
 static constexpr uint32_t RADIO_RX_BUFFER_SIZE = 4096;
 static constexpr const char *AP_PASSWORD_PREFIX = "tracker";

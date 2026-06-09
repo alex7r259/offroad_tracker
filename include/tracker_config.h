@@ -35,6 +35,7 @@ enum TrackerRole : uint8_t {
   ROLE_AMBULANCE = 2,
   ROLE_EVACUATION = 3,
   ROLE_BASE = 4,
+  ROLE_RELAY = 5,
 };
 
 static constexpr uint8_t DEFAULT_NODE_ROLE = ROLE_PARTICIPANT;

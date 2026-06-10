@@ -264,33 +264,205 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
 
 // ======================== Веб-интерфейс (режим STA) ========================
 String htmlHeader(const String &title) {
-  String html = "<!doctype html><html lang='ru'><head><meta charset='utf-8'>";
+  String html;
+  html += "<!DOCTYPE html><html lang='ru'><head>";
+  html += "<meta charset='UTF-8'>";
   html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-  html += "<title>" + title + " - Tracker Base</title>";
-  html += "<style>body{font-family:system-ui;margin:24px;background:#111;color:#eee}";
-  html += "a{color:#8fd}input,button{font-size:16px;padding:8px;margin:4px}";
-  html += "table{border-collapse:collapse;width:100%;margin-top:16px}td,th{border:1px solid #444;padding:6px}";
-  html += ".ok{color:#8f8}.bad{color:#f88}</style></head><body>";
+  html += "<title>" + title + "</title>";
+
+  html += R"rawliteral(
+  <style>
+  *{box-sizing:border-box}
+  body{
+      margin:0;
+      padding:20px;
+      background:#111827;
+      color:#f3f4f6;
+      font-family:Arial,sans-serif;
+  }
+
+  .container{
+      max-width:1200px;
+      margin:auto;
+  }
+
+  .card{
+      background:#1f2937;
+      border-radius:12px;
+      padding:16px;
+      margin-bottom:16px;
+  }
+
+  h1,h2{
+      margin-top:0;
+  }
+
+  a{
+      color:#60a5fa;
+      text-decoration:none;
+  }
+
+  a:hover{
+      text-decoration:underline;
+  }
+
+  .grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+      gap:12px;
+  }
+
+  .value{
+      font-size:24px;
+      font-weight:bold;
+      margin-top:8px;
+  }
+
+  .ok{
+      color:#10b981;
+  }
+
+  .bad{
+      color:#ef4444;
+  }
+
+  table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:10px;
+  }
+
+  th{
+      background:#374151;
+  }
+
+  td,th{
+      padding:8px;
+      border:1px solid #4b5563;
+      text-align:center;
+  }
+
+  tr:nth-child(even){
+      background:#1f2937;
+  }
+
+  .sos{
+      background:#7f1d1d !important;
+      color:white;
+      font-weight:bold;
+  }
+
+  input{
+      width:100%;
+      padding:10px;
+      margin:6px 0 12px;
+      border:none;
+      border-radius:8px;
+      background:#374151;
+      color:white;
+  }
+
+  button{
+      padding:10px 20px;
+      border:none;
+      border-radius:8px;
+      background:#2563eb;
+      color:white;
+      cursor:pointer;
+  }
+
+  button:hover{
+      background:#1d4ed8;
+  }
+  </style>
+  )rawliteral";
+
+  html += "</head><body><div class='container'>";
   return html;
 }
 
 void handleRoot() {
-  String page = htmlHeader("Главная");
-  page += "<h1>Базовая станция трекера</h1>";
-  page += "<p><b>Версия:</b> 1.0</p>";
-  page += "<p><b>Wi-Fi статус:</b> " + String(WiFi.status() == WL_CONNECTED ? "подключен" : "нет") + "</p>";
-  page += "<p><b>IP адрес:</b> " + WiFi.localIP().toString() + "</p>";
-  page += "<p><b>WebSocket:</b> " + String(wsConnected ? "подключен" : "отключен") + "</p>";
-  page += "<p><b>Uptime:</b> " + String(millis() / 1000UL) + " сек</p>";
-  page += "<p><b>Свободная память:</b> " + String(ESP.getFreeHeap()) + " байт</p>";
+
   int nodeCount = 0;
+  uint32_t lastPacketAge = 0xFFFFFFFF;
+  
   xSemaphoreTake(stateMutex, portMAX_DELAY);
-  for (size_t i = 0; i < MAX_NODE_COUNT; i++) if (nodes[i].used) nodeCount++;
+  
+  for(size_t i=0;i<MAX_NODE_COUNT;i++)
+  {
+	  if(nodes[i].used)
+		  {
+			  nodeCount++;
+			  
+			  uint32_t age = (millis() - nodes[i].lastSeen) / 1000;
+			  
+			  if(age < lastPacketAge) lastPacketAge = age;
+		  }
+  }
+  
   xSemaphoreGive(stateMutex);
-  page += "<p><b>Видимых узлов:</b> " + String(nodeCount) + "</p>";
-  page += "<p><a href='/nodes'>Таблица узлов</a> · <a href='/settings'>Настройки</a> · <a href='/reset'>Сброс настроек</a></p>";
-  page += "</body></html>";
-  server.send(200, "text/html", page);
+  if(lastPacketAge == 0xFFFFFFFF) lastPacketAge = 0;
+
+  String page = htmlHeader("Tracker Base");
+
+  page += "<h1>Offroad Tracker Base</h1>";
+
+  page += "<div class='grid'>";
+
+  page += "<div class='card'>";
+  page += "<h2>Wi-Fi</h2>";
+  page += "<div class='value " +
+          String(WiFi.status()==WL_CONNECTED?"ok":"bad") +
+          "'>" +
+          String(WiFi.status()==WL_CONNECTED?"ONLINE":"OFFLINE") +
+          "</div></div>";
+
+  page += "<div class='card'>";
+  page += "<h2>WebSocket</h2>";
+  page += "<div class='value " +
+          String(wsConnected?"ok":"bad") +
+          "'>" +
+          String(wsConnected?"ONLINE":"OFFLINE") +
+          "</div></div>";
+
+  page += "<div class='card'>";
+  page += "<h2>Узлы</h2>";
+  page += "<div class='value'>" + String(nodeCount) + "</div>";
+  page += "</div>";
+  
+  page += "<div class='card'>";
+  page += "<p><b>Последний пакет:</b> ";
+  page += String(lastPacketAge);
+  page += " сек назад</p>";
+  page += "</div>";
+
+  page += "<div class='card'>";
+  page += "<h2>Память</h2>";
+  page += "<div class='value'>" + String(ESP.getFreeHeap()/1024) + " KB</div>";
+  page += "</div>";
+
+  page += "</div>";
+
+  page += "<div class='card'>";
+  page += "<p><b>IP:</b> " + WiFi.localIP().toString() + "</p>";
+  page += "<p><b>Uptime:</b> " + String(millis()/1000) + " сек</p>";
+  page += "</div>";
+
+  page += "<div class='card'>";
+  page += "<a href='/nodes'>Узлы сети</a><br><br>";
+  page += "<a href='/settings'>Настройки</a><br><br>";
+  page += "<a href='/reset'>Сброс настроек</a>";
+  page += "</div>";
+
+  page += R"rawliteral(
+  <script>
+  setTimeout(()=>location.reload(),5000);
+  </script>
+  )rawliteral";
+
+  page += "</div></body></html>";
+
+  server.send(200,"text/html",page);
 }
 
 void handleNodes() {
@@ -301,7 +473,8 @@ void handleNodes() {
   xSemaphoreTake(stateMutex, portMAX_DELAY);
   for (size_t i = 0; i < MAX_NODE_COUNT; i++) {
     if (!nodes[i].used) continue;
-    page += "<tr>";
+    bool sos = nodes[i].flags & 0x0001;
+	page += sos ? "<tr class='sos'>" : "<tr>";
     page += "<td>" + String(nodes[i].id) + "</td>";
     page += "<td>" + String(nodes[i].latE7 / 10000000.0, 6) + "</td>";
     page += "<td>" + String(nodes[i].lonE7 / 10000000.0, 6) + "</td>";
@@ -317,7 +490,12 @@ void handleNodes() {
     page += "</tr>";
   }
   xSemaphoreGive(stateMutex);
-  page += "</table><p><a href='/'>Назад</a></p></body></html>";
+  page += "</table>";
+  page += "<p><a href='/'>Назад</a></p>";
+  
+  page += R"rawliteral(<script>setTimeout(()=>location.reload(),3000);</script>)rawliteral";
+  
+  page += "</div></body></html>";
   server.send(200, "text/html", page);
 }
 
@@ -337,7 +515,9 @@ void handleSettings() {
   page += "IP сервера: <input name='host' value='" + host + "'><br>";
   page += "Порт сервера: <input name='port' type='number' value='" + String(port) + "'><br>";
   page += "<button type='submit'>Сохранить и перезагрузить</button>";
-  page += "</form><p><a href='/'>Назад</a></p></body></html>";
+  page += "</form>";
+  page += "<p><a href='/'>Назад</a></p>";
+  page += "</div></body></html>";
   server.send(200, "text/html", page);
 }
 

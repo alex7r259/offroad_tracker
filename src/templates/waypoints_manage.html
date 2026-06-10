@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Управление точками (КП/лагерь)</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { margin:0; padding:0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
+        #topbar {
+            background: #2c3e50;
+            color: white;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        #topbar button, #topbar input, #topbar select {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+        }
+        #topbar button {
+            background: #27ae60;
+            color: white;
+            cursor: pointer;
+        }
+        #topbar button:hover { background: #2ecc71; }
+        #map { flex: 1; height: 60%; }
+        #table-container {
+            height: 40%;
+            overflow: auto;
+            background: #ecf0f1;
+            padding: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+        th, td {
+            border: 1px solid #bdc3c7;
+            padding: 6px;
+            text-align: left;
+        }
+        th { background: #34495e; color: white; }
+        .actions button {
+            margin: 0 2px;
+            padding: 2px 6px;
+            cursor: pointer;
+        }
+        .form-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .form-row input, .form-row select {
+            padding: 5px;
+        }
+        hr { margin: 10px 0; }
+    </style>
+</head>
+<body>
+<div id="topbar">
+    <h3 style="margin:0;">📌 Редактор точек</h3>
+    <a href="/" style="color:white; text-decoration:none; background:#e67e22; padding:6px 12px; border-radius:4px;">← Карта</a>
+    <span style="flex:1"></span>
+    <button id="exportGpxBtn">📥 Экспорт GPX</button>
+    <label>📂 Импорт GPX: <input type="file" id="gpxFile" accept=".gpx"></label>
+    <button id="importGpxBtn">Загрузить</button>
+</div>
+<div id="map"></div>
+<div id="table-container">
+    <h4>Добавить / редактировать точку</h4>
+    <div class="form-row">
+        <input type="hidden" id="editId">
+        <input type="text" id="name" placeholder="Название" required>
+        <input type="text" id="lat" placeholder="Широта" step="any">
+        <input type="text" id="lon" placeholder="Долгота" step="any">
+        <select id="type">
+            <option value="checkpoint">Контрольный пункт (КП)</option>
+            <option value="basecamp">Базовый лагерь</option>
+        </select>
+        <select id="categories" multiple size="5">
+            <option value="Полироль">Полироль</option>
+            <option value="Стандарт">Стандарт</option>
+            <option value="Туризм">Туризм</option>
+            <option value="Спорт">Спорт</option>
+            <option value="Организатор">Организатор</option>
+            <option value="Базовый лагерь">Базовый лагерь</option>
+        </select>
+        <input type="text" id="description" placeholder="Описание">
+        <button id="saveBtn">💾 Сохранить</button>
+        <button id="clearBtn">🗑 Очистить</button>
+    </div>
+    <hr>
+    <h4>Список точек</h4>
+    <table id="waypointsTable">
+        <thead>
+            <tr><th>ID</th><th>Название</th><th>Широта</th><th>Долгота</th><th>Тип</th><th>Категория</th><th>Описание</th><th>Действия</th></tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+<script>
+    var map = L.map('map').setView([55.751244, 37.618423], 10);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+    }).addTo(map);
+    var markerLayer = L.layerGroup().addTo(map);
+    var categoryColors = {};
+
+    async function loadColors() {
+        const resp = await fetch('/api/categories');
+        categoryColors = await resp.json();
+    }
+
+    function getColor(cat) {
+        return categoryColors[cat] || '#888888';
+    }
+
+    function createIcon(category, type) {
+        var color = getColor(category);
+        var html = '<div style="background:'+color+'; width:28px; height:28px; border-radius:4px; border:2px solid white; text-align:center; line-height:24px;">📍</div>';
+        if (type === 'basecamp') {
+            html = '<div style="background:'+color+'; width:32px; height:32px; border-radius:50%; border:2px solid white; text-align:center; line-height:28px;">🏕️</div>';
+        }
+        return L.divIcon({ className: '', html: html, iconSize: [28,28] });
+    }
+
+    async function loadWaypoints() {
+    const resp = await fetch('/api/waypoints');
+    const wps = await resp.json();
+    markerLayer.clearLayers();
+    const tbody = document.querySelector('#waypointsTable tbody');
+    tbody.innerHTML = '';
+    for (let wp of wps) {
+        const firstCat = (wp.categories && wp.categories.length) ? wp.categories[0] : '';
+        const icon = createIcon(firstCat, wp.type);
+        const marker = L.marker([wp.lat, wp.lon], { icon: icon }).bindPopup(`<b>${wp.name}</b><br>${wp.type === 'basecamp' ? 'Лагерь' : 'КП'}<br>Категории: ${(wp.categories || []).join(', ')}`);
+        markerLayer.addLayer(marker);
+        const row = tbody.insertRow();
+        row.insertCell(0).innerText = wp.id;
+        row.insertCell(1).innerText = wp.name;
+        row.insertCell(2).innerText = wp.lat;
+        row.insertCell(3).innerText = wp.lon;
+        row.insertCell(4).innerText = wp.type === 'basecamp' ? 'Лагерь' : 'КП';
+        row.insertCell(5).innerText = (wp.categories || []).join(', ');
+        row.insertCell(6).innerText = wp.description || '';
+        const actions = row.insertCell(7);
+        actions.className = 'actions';
+        const editBtn = document.createElement('button');
+        editBtn.innerText = '✏️';
+        editBtn.onclick = () => {
+            document.getElementById('editId').value = wp.id;
+            document.getElementById('name').value = wp.name;
+            document.getElementById('lat').value = wp.lat;
+            document.getElementById('lon').value = wp.lon;
+            document.getElementById('type').value = wp.type;
+            // отметить выбранные категории
+            const select = document.getElementById('categories');
+            for (let i = 0; i < select.options.length; i++) {
+                select.options[i].selected = wp.categories.includes(select.options[i].value);
+            }
+            document.getElementById('description').value = wp.description || '';
+        };
+        const delBtn = document.createElement('button');
+        delBtn.innerText = '🗑️';
+        delBtn.onclick = async () => {
+            if (confirm('Удалить точку?')) {
+                await fetch(`/api/waypoints/${wp.id}`, { method: 'DELETE' });
+                loadWaypoints();
+            }
+        };
+        actions.appendChild(editBtn);
+        actions.appendChild(delBtn);
+    }
+}
+
+    document.getElementById('saveBtn').onclick = async () => {
+    const id = document.getElementById('editId').value;
+    const name = document.getElementById('name').value.trim();
+    const lat = parseFloat(document.getElementById('lat').value);
+    const lon = parseFloat(document.getElementById('lon').value);
+    if (!name || isNaN(lat) || isNaN(lon)) { alert('Заполните название и координаты'); return; }
+    const categories = Array.from(document.getElementById('categories').selectedOptions).map(opt => opt.value);
+    const payload = {
+        name, lat, lon,
+        categories: categories,
+        type: document.getElementById('type').value,
+        description: document.getElementById('description').value
+    };
+    if (id) payload.id = parseInt(id);
+    const resp = await fetch('/api/waypoints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (resp.ok) {
+        document.getElementById('clearBtn').click();
+        loadWaypoints();
+    } else { alert('Ошибка'); }
+};
+    document.getElementById('clearBtn').onclick = () => {
+    document.getElementById('editId').value = '';
+    document.getElementById('name').value = '';
+    document.getElementById('lat').value = '';
+    document.getElementById('lon').value = '';
+    document.getElementById('type').value = 'checkpoint';
+    const select = document.getElementById('categories');
+    for (let i = 0; i < select.options.length; i++) {
+        select.options[i].selected = false;
+    }
+    document.getElementById('description').value = '';
+};
+    document.getElementById('exportGpxBtn').onclick = () => {
+        window.location.href = '/api/waypoints/export/gpx';
+    };
+    document.getElementById('importGpxBtn').onclick = async () => {
+        const fileInput = document.getElementById('gpxFile');
+        if (!fileInput.files.length) { alert('Выберите GPX файл'); return; }
+        const file = fileInput.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+        const resp = await fetch('/api/waypoints/import/gpx', { method: 'POST', body: formData });
+        const result = await resp.json();
+        if (resp.ok) {
+            alert(`Импортировано ${result.imported} точек`);
+            loadWaypoints();
+        } else { alert('Ошибка: ' + result.error); }
+    };
+    loadColors().then(() => { loadWaypoints(); });
+    map.on('click', (e) => {
+        document.getElementById('lat').value = e.latlng.lat.toFixed(6);
+        document.getElementById('lon').value = e.latlng.lng.toFixed(6);
+    });
+</script>
+</body>
+</html>

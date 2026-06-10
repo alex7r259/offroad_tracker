@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>Off-road Tracker</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body { 
+            margin:0; 
+            padding:0; 
+            font-family: 'Segoe UI', 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #111;
+            touch-action: pan-x pan-y;
+        }
+        
+        #map { 
+            height: 100vh; 
+            width: 100%; 
+            z-index: 1;
+        }
+        
+        /* --- АДАПТИВНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ (сворачиваемая на мобильных) --- */
+        #controls {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(255, 255, 255, 0.96);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            padding: 14px;
+            border-radius: 20px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+            font-size: 13px;
+            min-width: 180px;
+            max-width: 280px;
+            pointer-events: auto;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(0,0,0,0.08);
+            font-weight: 500;
+        }
+        
+        /* Кнопка сворачивания (по умолчанию скрыта на десктопе) */
+        .collapse-toggle {
+            background: transparent;
+            box-shadow: none;
+            width: auto;
+            padding: 4px 8px;
+            font-size: 18px;
+            margin: 0;
+            display: inline-block;
+            float: right;
+            width: auto;
+            background: #eee;
+            border-radius: 30px;
+        }
+        .collapse-toggle:hover {
+            background: #ddd;
+        }
+        
+        /* Содержимое, которое будет скрываться при сворачивании */
+        .controls-main {
+            transition: opacity 0.2s;
+        }
+        
+        /* Мобильная адаптация: панель внизу, сворачиваемая */
+        @media (max-width: 640px) {
+            #controls {
+                top: auto;
+                bottom: 16px;
+                right: 16px;
+                left: 16px;
+                width: auto;
+                max-width: none;
+                border-radius: 24px;
+                padding: 12px 14px;
+                background: rgba(255, 255, 255, 0.97);
+                backdrop-filter: blur(8px);
+                box-shadow: 0 4px 18px rgba(0,0,0,0.3);
+            }
+            .collapse-toggle {
+                display: inline-block !important;
+            }
+            /* Свёрнутое состояние: скрываем основное содержимое */
+            #controls.collapsed .controls-main {
+                display: none;
+            }
+            button {
+                padding: 10px 12px;
+                font-size: 14px;
+                margin: 5px 0;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            #controls {
+                padding: 10px 12px;
+            }
+            .modal-content {
+                width: 92%;
+                padding: 18px;
+            }
+        }
+        
+        /* Десктоп: кнопка сворачивания не нужна */
+        .collapse-toggle {
+            display: none;
+        }
+        
+        button {
+            margin: 5px 0;
+            padding: 8px 10px;
+            width: 100%;
+            cursor: pointer;
+            border: none;
+            border-radius: 40px;
+            background-color: #f2f2f2;
+            transition: 0.2s;
+            font-weight: 500;
+            font-size: 13px;
+            font-family: inherit;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        button:hover {
+            background-color: #e0e0e0;
+            transform: scale(0.98);
+        }
+        button:active {
+            background-color: #ccc;
+        }
+        
+        .legend {
+            margin-top: 12px;
+            border-top: 1px solid rgba(0,0,0,0.12);
+            padding-top: 10px;
+            font-size: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: space-between;
+        }
+        .legend span {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        
+        .layer-switch {
+            margin-top: 8px;
+            font-size: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: space-between;
+        }
+        .layer-switch label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+        
+        /* Кнопка управления звуком */
+        #enableSoundBtn {
+            background-color: #ff9800;
+            color: white;
+            font-weight: bold;
+            margin-top: 6px;
+            transition: 0.2s;
+        }
+        #enableSoundBtn.sound-active {
+            background-color: #2e7d32;
+            color: white;
+        }
+        
+        /* SOS мигание на панели */
+        .sos-alert {
+            animation: panelPulse 0.9s infinite;
+            box-shadow: 0 0 0 2px red, 0 0 0 5px rgba(255,80,40,0.6);
+            background: #fff0f0;
+        }
+        @keyframes panelPulse {
+            0% { border-left: 4px solid red; background: #fff0f0; }
+            100% { border-left: 4px solid darkred; background: #ffe0e0; }
+        }
+        
+        /* SOS маркерная анимация */
+        .sos-marker {
+            box-shadow: 0 0 0 3px red, 0 0 0 7px rgba(255, 69, 0, 0.7);
+            animation: sosPulse 0.85s infinite;
+            border-radius: 50%;
+        }
+        @keyframes sosPulse {
+            0% { box-shadow: 0 0 0 0 red; }
+            70% { box-shadow: 0 0 0 8px rgba(255, 0, 0, 0.4); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+        }
+        
+        /* Модальное окно */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.6);
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(2px);
+        }
+        .modal-content {
+            background: white;
+            padding: 22px;
+            border-radius: 28px;
+            width: 340px;
+            max-width: 90%;
+            box-shadow: 0 25px 40px rgba(0,0,0,0.3);
+            border: 1px solid #ddd;
+        }
+        .modal-content h3 {
+            margin-top: 0;
+            font-size: 1.5rem;
+            text-align: center;
+        }
+        .modal-content input, .modal-content select {
+            width: 100%;
+            margin: 8px 0 12px;
+            padding: 10px;
+            border-radius: 30px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+        .modal-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 16px;
+            gap: 10px;
+        }
+        .modal-buttons button {
+            width: 48%;
+            padding: 10px;
+            border-radius: 40px;
+        }
+        
+        /* тост-уведомление */
+        .sound-toast {
+            position: fixed;
+            bottom: 85px;
+            left: 20px;
+            right: 20px;
+            background: #ff5722e6;
+            color: white;
+            padding: 10px 16px;
+            border-radius: 60px;
+            font-size: 13px;
+            text-align: center;
+            z-index: 1100;
+            backdrop-filter: blur(10px);
+            font-weight: bold;
+            pointer-events: none;
+            animation: fadeInOut 4s ease forwards;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(20px);}
+            15% { opacity: 1; transform: translateY(0);}
+            85% { opacity: 1; transform: translateY(0);}
+            100% { opacity: 0; transform: translateY(20px); visibility: hidden;}
+        }
+        
+        #nodeCount {
+            font-weight: bold;
+            background: #2196f3;
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 40px;
+            color: white;
+            font-size: 12px;
+        }
+        .sos-badge {
+            background: red;
+            color: white;
+            border-radius: 30px;
+            padding: 2px 10px;
+            font-size: 11px;
+            margin-left: 8px;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<div id="controls">
+    <div class="header-row">
+        <b>🏁 Off-road Tracker</b>
+        <button id="collapseToggleBtn" class="collapse-toggle" title="Свернуть/развернуть">▼</button>
+    </div>
+    <div class="controls-main">
+        <span id="nodeCount">0</span> экипажей активны<br>
+        <button id="zoomToAllBtn">🔍 Показать всех</button>
+        <div class="layer-switch">
+            <label><input type="checkbox" id="toggleNodes" checked> 🚙 Экипажи</label>
+            <label><input type="checkbox" id="toggleWaypoints" checked> 📍 КП и лагерь</label>
+        </div>
+        <button id="enableSoundBtn">🔊 Активировать звук SOS</button>
+        <button id="manageWaypointsBtn" style="background:#4CAF50; color:white;">📌 Управление точками</button>
+        <button id="manageNodesBtn" style="background:#2196F3; color:white;">📡 Управление узлами</button>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования экипажа -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <h3>✏️ Редактировать экипаж</h3>
+        <input type="hidden" id="editNodeId">
+        <label>Стартовый номер:</label>
+        <input type="text" id="editStartNumber" placeholder="например 215">
+        <label>Пилот:</label>
+        <input type="text" id="editPilot1" placeholder="Иванов Иван">
+        <label>Штурман:</label>
+        <input type="text" id="editPilot2" placeholder="Петров Петр">
+        <label>Категория:</label>
+        <select id="editCategory">
+            <option value="Полироль">Полироль</option>
+            <option value="Стандарт">Стандарт</option>
+            <option value="Туризм">Туризм</option>
+            <option value="Спорт">Спорт</option>
+            <option value="Организатор">Организатор</option>
+        </select>
+        <label>Отображаемое имя (alias):</label>
+        <input type="text" id="editAlias" placeholder="необязательно">
+        <div class="modal-buttons">
+            <button id="saveEditBtn">💾 Сохранить</button>
+            <button id="cancelEditBtn">❌ Отмена</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ---------- Глобальные ----------
+    var map = L.map('map').setView([59.56, 56.59], 12);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> & CartoDB'
+    }).addTo(map);
+
+    var markers = new Map();     
+    var polylines = new Map();   
+    var waypointMarkers = new Map();
+    var categoryColors = {};
+    var waypointsData = [];
+    
+    var currentTrackNodeId = null;
+    var trackUpdateInterval = null;
+
+    // ---------- ЗВУК И УПРАВЛЕНИЕ SOS ----------
+    let audioCtx = null;
+    let soundUnlocked = false;
+    let unacknowledgedSos = new Set();   // id экипажей с активным SOS (не квитированных)
+    let soundWarningShown = false;
+    let repeatingBeepInterval = null;    // интервал для повторяющегося звука
+
+    // Воспроизведение одного бип-сигнала
+    function actuallyPlayBeep() {
+        if (!audioCtx) return;
+        if (audioCtx.state !== 'running') {
+            audioCtx.resume().catch(e => console.warn);
+            return;
+        }
+        try {
+            const oscillator = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            oscillator.connect(gain);
+            gain.connect(audioCtx.destination);
+            oscillator.frequency.value = 880;
+            gain.gain.value = 0.35;
+            oscillator.start();
+            gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.9);
+            oscillator.stop(audioCtx.currentTime + 0.9);
+        } catch(e) { console.warn("beep error", e); }
+    }
+
+    function playBeep() {
+        if (!soundUnlocked) {
+            if (!soundWarningShown) {
+                showSoundToast("🔊 Нажмите «Активировать звук» для SOS оповещений!");
+                soundWarningShown = true;
+            }
+            return;
+        }
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume().then(() => actuallyPlayBeep()).catch(e => console.warn);
+        } else if (audioCtx.state === 'running') {
+            actuallyPlayBeep();
+        }
+    }
+
+    function showSoundToast(message) {
+        let existingToast = document.querySelector('.sound-toast');
+        if (existingToast) existingToast.remove();
+        let toast = document.createElement('div');
+        toast.className = 'sound-toast';
+        toast.innerText = message;
+        document.body.appendChild(toast);
+        setTimeout(() => { if(toast) toast.remove(); }, 4000);
+    }
+
+    // Активация звука пользователем
+    function unlockSoundByUser() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume().then(() => {
+                soundUnlocked = true;
+                const btn = document.getElementById('enableSoundBtn');
+                btn.innerText = '🔊 Звук активирован ✓';
+                btn.classList.add('sound-active');
+                btn.style.background = '#2e7d32';
+                actuallyPlayBeep();
+                showSoundToast("✅ Звук включён, SOS сигналы будут повторяться");
+            }).catch(e => {
+                soundUnlocked = false;
+            });
+        } else if (audioCtx.state === 'running') {
+            soundUnlocked = true;
+            const btn = document.getElementById('enableSoundBtn');
+            btn.innerText = '🔊 Звук активен ✓';
+            btn.classList.add('sound-active');
+            btn.style.background = '#2e7d32';
+            actuallyPlayBeep();
+        } else {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioCtx.resume().then(() => {
+                soundUnlocked = true;
+                actuallyPlayBeep();
+                const btn = document.getElementById('enableSoundBtn');
+                btn.innerText = '🔊 Звук активен ✓';
+                btn.classList.add('sound-active');
+            }).catch(() => {});
+        }
+    }
+
+    // Запуск повторяющегося звука (каждые 6 секунд, пока есть неподтверждённые SOS)
+    function startRepeatingSosBeep() {
+        if (repeatingBeepInterval) return;
+        repeatingBeepInterval = setInterval(() => {
+            if (unacknowledgedSos.size > 0 && soundUnlocked) {
+                playBeep();
+                // Также показываем напоминание в консоли / визуально не засоряем
+                if (unacknowledgedSos.size > 0 && soundUnlocked) {
+                    // можно тихо в консоль
+                    console.log(`SOS active: ${unacknowledgedSos.size} экипажей, звук повторяется`);
+                }
+            }
+        }, 6000);
+    }
+
+    // Обновление индикатора неподтвержденных SOS в панели (опционально)
+    function updateSosBadge() {
+        let controlsDiv = document.getElementById('controls');
+        let existingBadge = document.querySelector('.sos-badge');
+        if (unacknowledgedSos.size > 0) {
+            controlsDiv.classList.add('sos-alert');
+            if (!existingBadge) {
+                let badge = document.createElement('span');
+                badge.className = 'sos-badge';
+                badge.innerText = `🆘 ${unacknowledgedSos.size}`;
+                document.querySelector('#controls .header-row').appendChild(badge);
+            } else {
+                existingBadge.innerText = `🆘 ${unacknowledgedSos.size}`;
+            }
+        } else {
+            controlsDiv.classList.remove('sos-alert');
+            if (existingBadge) existingBadge.remove();
+        }
+    }
+
+    // Проверка SOS (обновление unacknowledgedSos на основе данных с сервера)
+    function updateUnacknowledgedSos(nodes) {
+        const newSosSet = new Set();
+        for (let n of nodes) {
+            if (n.sos === true) newSosSet.add(n.id);
+        }
+        // Сравниваем с предыдущим состоянием, чтобы звук повторялся, но без лишних уведомлений
+        const hadSosBefore = unacknowledgedSos.size > 0;
+        unacknowledgedSos = newSosSet;
+        updateSosBadge();
+        if (unacknowledgedSos.size > 0 && !hadSosBefore) {
+            // Появились новые SOS — дополнительно звук для привлечения внимания
+            if (soundUnlocked) playBeep();
+        }
+        // Управление миганием панели
+        const controlsDiv = document.getElementById('controls');
+        if (unacknowledgedSos.size > 0) {
+            controlsDiv.classList.add('sos-alert');
+        } else {
+            controlsDiv.classList.remove('sos-alert');
+        }
+    }
+
+    // --- Треки (без изменений) ---
+    function stopTrackUpdates() {
+        if (trackUpdateInterval) { clearInterval(trackUpdateInterval); trackUpdateInterval = null; }
+    }
+    function refreshTrack(nodeId) {
+        if (currentTrackNodeId !== nodeId) return;
+        fetch('/api/tracks?node_id=' + nodeId + '&hours=24')
+            .then(resp => resp.json())
+            .then(tracks => {
+                if (tracks.length > 0 && polylines.has(nodeId)) {
+                    var points = tracks.map(t => [t.lat, t.lon]);
+                    polylines.get(nodeId).setLatLngs(points);
+                } else if (tracks.length === 0 && polylines.has(nodeId)) {
+                    map.removeLayer(polylines.get(nodeId));
+                    polylines.delete(nodeId);
+                    stopTrackUpdates();
+                    currentTrackNodeId = null;
+                }
+            }).catch(e => console.error);
+    }
+    function hideTrack() {
+        if (currentTrackNodeId && polylines.has(currentTrackNodeId)) {
+            map.removeLayer(polylines.get(currentTrackNodeId));
+            polylines.delete(currentTrackNodeId);
+        }
+        stopTrackUpdates();
+        currentTrackNodeId = null;
+    }
+    function showTrack(nodeId) {
+        if (currentTrackNodeId === nodeId) return;
+        hideTrack();
+        currentTrackNodeId = nodeId;
+        fetch('/api/tracks?node_id=' + nodeId + '&hours=24')
+            .then(resp => resp.json())
+            .then(tracks => {
+                if (tracks.length) {
+                    var points = tracks.map(t => [t.lat, t.lon]);
+                    var polyline = L.polyline(points, { color: '#3388ff', weight: 4, opacity: 0.7 }).addTo(map);
+                    polylines.set(nodeId, polyline);
+                    map.fitBounds(polyline.getBounds());
+                    trackUpdateInterval = setInterval(() => refreshTrack(nodeId), 5000);
+                } else { alert('Нет данных трека'); currentTrackNodeId = null; }
+            }).catch(e => { console.error(e); currentTrackNodeId = null; });
+    }
+    window.toggleTrack = function(nodeId) {
+        (currentTrackNodeId === nodeId) ? hideTrack() : showTrack(nodeId);
+    };
+
+    // --- Вспомогательные ---
+    async function loadCategoryColors() {
+        try { var resp = await fetch('/api/categories'); categoryColors = await resp.json(); } catch(e) { console.error(e); }
+    }
+    function getColor(category) { return categoryColors[category] || "#888888"; }
+    function createIcon(startNumber, category, sos) {
+        var color = getColor(category);
+        var displayNumber = startNumber && startNumber !== "" ? startNumber : "?";
+        var extraClass = sos ? 'sos-marker' : '';
+        return L.divIcon({
+            className: '',
+            html: `<div class="${extraClass}" style="background:${color}; width:22px; height:22px; border-radius:50%; border:2px solid white; text-align:center; line-height:22px; font-weight:bold; color:white; font-size:13px; text-shadow:0 0 2px black; box-shadow:0 1px 4px rgba(0,0,0,0.5);">${displayNumber}</div>`,
+            iconSize: [22, 22], popupAnchor: [0, -12]
+        });
+    }
+    function createWaypointIcon(category, type, name) {
+        if (type === 'basecamp') return L.divIcon({ html: '<div style="background:rgba(0,0,0,0); width:24px; height:24px; text-align:center; font-size:20px;">🏕️</div>', iconSize: [24,24], popupAnchor: [0,-12] });
+        var color = categoryColors[category] || '#6666cc';
+        var letter = name ? name.charAt(0).toUpperCase() : '●';
+        return L.divIcon({ html: `<div style="background:${color}; width:20px; height:20px; border-radius:30px; border:2px solid white; text-align:center; line-height:20px; font-weight:bold; color:white; font-size:12px;">${letter}</div>`, iconSize: [20,20], popupAnchor: [0,-10] });
+    }
+    function formatTimeAgo(ts) { if (!ts) return "никогда"; let s = Math.floor(Date.now()/1000)-ts; if(s<60) return s+" сек назад"; let m=Math.floor(s/60); if(m<60) return m+" мин назад"; let h=Math.floor(m/60); if(h<24) return h+" ч назад"; return Math.floor(h/24)+" дн назад"; }
+    function escapeHtml(str) { if(!str) return ""; return str.replace(/[&<>]/g, m => m==='&'?'&amp;': m==='<'?'&lt;':'&gt;'); }
+
+    // --- Редактирование экипажа ---
+    function openEditModal(nodeId, data) {
+        document.getElementById('editNodeId').value = nodeId;
+        document.getElementById('editStartNumber').value = data.start_number || '';
+        document.getElementById('editPilot1').value = data.pilot1 || '';
+        document.getElementById('editPilot2').value = data.pilot2 || '';
+        document.getElementById('editCategory').value = data.category || 'Туризм';
+        document.getElementById('editAlias').value = data.alias || '';
+        document.getElementById('editModal').style.display = 'flex';
+    }
+    async function saveEdit() {
+        let nodeId = parseInt(document.getElementById('editNodeId').value);
+        let data = {
+            node_id: nodeId,
+            start_number: document.getElementById('editStartNumber').value.trim(),
+            pilot1: document.getElementById('editPilot1').value.trim(),
+            pilot2: document.getElementById('editPilot2').value.trim(),
+            category: document.getElementById('editCategory').value,
+            alias: document.getElementById('editAlias').value.trim()
+        };
+        try {
+            let resp = await fetch('/api/node', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+            if(resp.ok) { closeModal(); updateNodes(); }
+            else alert("Ошибка сохранения");
+        } catch(e) { alert("Ошибка сети"); }
+    }
+    function closeModal() { document.getElementById('editModal').style.display = 'none'; }
+
+    // --- Обновление экипажей ---
+    async function updateNodes() {
+        try {
+            let resp = await fetch('/api/nodes');
+            let nodes = await resp.json();
+            document.getElementById('nodeCount').innerText = nodes.length;
+            let nodesVisible = document.getElementById('toggleNodes').checked;
+            // Обновляем статус неподтвержденных SOS
+            updateUnacknowledgedSos(nodes);
+            for (let n of nodes) {
+                let id = n.id, lat = n.lat, lon = n.lon;
+                if (!lat || !lon) continue;
+                let battery = n.battery ?? 100;
+                let sos = n.sos === true;
+                let category = n.category || "";
+                let startNumber = (n.start_number && n.start_number !== "") ? n.start_number : id.toString();
+                let pilot1 = n.pilot1 || "", pilot2 = n.pilot2 || "", lastSeen = n.last_seen;
+                let popupContent = `<div style="min-width:200px;"><b>🏁 ${escapeHtml(startNumber)}</b><br>` +
+                    (pilot1 ? `👨‍✈️ Пилот: ${escapeHtml(pilot1)}<br>` : '') +
+                    (pilot2 ? `🧭 Штурман: ${escapeHtml(pilot2)}<br>` : '') +
+                    (category ? `🏆 Категория: ${escapeHtml(category)}<br>` : '') +
+                    `🔋 Батарея: ${battery}%<br>🕒 Последний пакет: ${formatTimeAgo(lastSeen)}<br>` +
+                    `<div style="margin-top:8px;"><button onclick="toggleTrack(${id})" style="width:auto; margin-right:5px;">📍 Трек</button>` +
+                    `<button onclick="editNodeData(${id})" style="width:auto;">✏️ Редактировать</button></div>`;
+                let icon = createIcon(startNumber, category, sos);
+                if (markers.has(id)) {
+                    let marker = markers.get(id);
+                    marker.setLatLng([lat, lon]);
+                    marker.setIcon(icon);
+                    marker.bindPopup(popupContent);
+                    if (!nodesVisible && map.hasLayer(marker)) map.removeLayer(marker);
+                    else if (nodesVisible && !map.hasLayer(marker)) marker.addTo(map);
+                } else {
+                    let marker = L.marker([lat, lon], { icon }).addTo(map);
+                    marker.bindPopup(popupContent);
+                    markers.set(id, marker);
+                    if (!nodesVisible) map.removeLayer(marker);
+                }
+            }
+            for (let [id, marker] of markers.entries()) {
+                if (!nodes.find(n => n.id == id)) {
+                    map.removeLayer(marker);
+                    markers.delete(id);
+                    if (polylines.has(id)) map.removeLayer(polylines.get(id)), polylines.delete(id);
+                    if (currentTrackNodeId === id) hideTrack();
+                }
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    async function loadWaypoints() {
+        try { let resp = await fetch('/api/waypoints'); waypointsData = await resp.json(); updateWaypointsLayer(); } catch(e) { console.error(e); }
+    }
+    function updateWaypointsLayer() {
+        let visible = document.getElementById('toggleWaypoints').checked;
+        for (let [id, m] of waypointMarkers.entries()) map.removeLayer(m);
+        waypointMarkers.clear();
+        if (!visible) return;
+        for (let wp of waypointsData) {
+            let firstCat = (wp.categories && wp.categories.length) ? wp.categories[0] : '';
+            let icon = createWaypointIcon(firstCat, wp.type, wp.name);
+            let marker = L.marker([wp.lat, wp.lon], { icon }).addTo(map);
+            let cats = (wp.categories || []).join(', ');
+            marker.bindPopup(`<b>${escapeHtml(wp.name)}</b><br>${wp.type==='basecamp'?'🏕️ Базовый лагерь':'📍 Контрольный пункт'}<br>${cats?`Категории: ${escapeHtml(cats)}` : ''}${wp.description?`<br>${escapeHtml(wp.description)}`:''}`);
+            waypointMarkers.set(wp.id, marker);
+        }
+    }
+
+    window.editNodeData = async function(nodeId) {
+        try {
+            let resp = await fetch(`/api/node?node_id=${nodeId}`);
+            let data = resp.ok ? await resp.json() : {};
+            openEditModal(nodeId, data);
+        } catch(e) { openEditModal(nodeId, {}); }
+    };
+    function zoomToAll() {
+        let bounds = [];
+        for (let [,m] of markers.entries()) bounds.push(m.getLatLng());
+        for (let [,m] of waypointMarkers.entries()) bounds.push(m.getLatLng());
+        if (bounds.length) map.fitBounds(L.featureGroup(bounds.map(p=>L.marker(p))).getBounds().pad(0.1));
+        else alert("Нет маркеров");
+    }
+    function manageWaypoints() { window.location.href = '/waypoints/manage'; }
+    function manageNodes() { window.location.href = '/nodes'; }
+
+    // --- Инициализация UI и сворачивание панели ---
+    document.getElementById('toggleNodes').addEventListener('change', function() {
+        let vis = this.checked;
+        for (let [,m] of markers.entries()) vis ? m.addTo(map) : map.removeLayer(m);
+    });
+    document.getElementById('toggleWaypoints').addEventListener('change', () => updateWaypointsLayer());
+    document.getElementById('zoomToAllBtn').addEventListener('click', zoomToAll);
+    document.getElementById('saveEditBtn').addEventListener('click', saveEdit);
+    document.getElementById('cancelEditBtn').addEventListener('click', closeModal);
+    document.getElementById('manageWaypointsBtn').addEventListener('click', manageWaypoints);
+    document.getElementById('manageNodesBtn').addEventListener('click', manageNodes);
+    document.getElementById('enableSoundBtn').addEventListener('click', unlockSoundByUser);
+    
+    // Сворачивание на мобильных
+    const collapseBtn = document.getElementById('collapseToggleBtn');
+    const controlsDiv = document.getElementById('controls');
+    collapseBtn.addEventListener('click', () => {
+        controlsDiv.classList.toggle('collapsed');
+        collapseBtn.innerText = controlsDiv.classList.contains('collapsed') ? '▲' : '▼';
+    });
+    // Автоматически определяем, если мобильный и изначально не свернут? Оставляем развернутым по умолчанию
+    if (window.innerWidth <= 640) {
+        // опционально можно поставить свернутым при загрузке, но лучше развернуть для первого знакомства
+        // controlsDiv.classList.add('collapsed');  // раскомментировать если нужно сразу свернутым
+    }
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 640) controlsDiv.classList.remove('collapsed');
+    });
+    
+    window.onclick = function(event) { if (event.target == document.getElementById('editModal')) closeModal(); };
+    map.on('click', () => { if (!soundUnlocked && audioCtx) gentleAutoUnlock(); });
+    function gentleAutoUnlock() {
+        if (!soundUnlocked && audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume().then(() => { soundUnlocked = true; const btn = document.getElementById('enableSoundBtn'); if(btn){ btn.innerText = '🔊 Звук активен ✓'; btn.classList.add('sound-active'); btn.style.background = '#2e7d32'; } showSoundToast("🔊 Звук разблокирован"); }).catch(()=>{});
+        } else if (!audioCtx) { audioCtx = new AudioContext(); audioCtx.resume().then(()=>{ soundUnlocked = true; }).catch(()=>{}); }
+    }
+    document.body.addEventListener('touchstart', gentleAutoUnlock, { passive: true });
+    
+    // Запуск повторяющегося звука
+    startRepeatingSosBeep();
+    
+    loadCategoryColors().then(() => {
+        updateNodes();
+        loadWaypoints();
+        setInterval(updateNodes, 5000);
+        setInterval(loadWaypoints, 15000);
+    });
+</script>
+</body>
+</html>

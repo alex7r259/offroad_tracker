@@ -3,9 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>Off-road Tracker | Линейка и SOS</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <title>Off-road Tracker</title>
+    <link rel="stylesheet" href="map.css" />
+    <script src="map.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
@@ -33,18 +33,15 @@
             position: absolute;
             top: 16px;
             right: 16px;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(16px);
+            background: rgba(255, 255, 255, 0);
+            backdrop-filter: blur(5px);
             z-index: 1000;
             padding: 20px;
             border-radius: 24px;
-            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
             font-size: 14px;
             min-width: 220px;
             max-width: 300px;
             pointer-events: auto;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border: 1px solid rgba(255,255,255,0.2);
         }
         
         .header-row {
@@ -179,14 +176,13 @@
             top: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.7);
+            background-color: rgba(0,0,0,0);
             backdrop-filter: blur(8px);
             align-items: center;
             justify-content: center;
         }
         
         .modal-content {
-            background: white;
             padding: 28px;
             border-radius: 28px;
             width: 100%;
@@ -273,7 +269,7 @@
         <button id="collapseToggleBtn" class="collapse-toggle" title="Свернуть/развернуть">▼</button>
     </div>
     <div class="controls-main">
-        <span id="nodeCount">0</span> экипажей активны<br><br>
+        <span id="nodeCount">0</span><span style="color: #374151;"> online<br><br>
         <button id="zoomToAllBtn">🔍 Показать всех на карте</button>
         <div class="layer-switch">
             <label><input type="checkbox" id="toggleNodes" checked> 🚙 Экипажи</label>
@@ -317,8 +313,8 @@
 <script>
     // ---------- Глобальные ----------
     var map = L.map('map').setView([59.56, 56.59], 12);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> & CartoDB'
+    L.tileLayer('tiles/{z}/{x}/{y}.png', {
+        attribution: ' Offline map'
     }).addTo(map);
 
     var markers = new Map();     
@@ -727,10 +723,9 @@
                 let category = n.category || "";
                 let startNumber = (n.start_number && n.start_number !== "") ? n.start_number : id.toString();
                 let pilot1 = n.pilot1 || "", pilot2 = n.pilot2 || "", lastSeen = n.last_seen;
-                let popupContent = `<div style="min-width:220px;font-size:14px;"><b>🏁 ${escapeHtml(startNumber)}</b><br>` +
-                    (pilot1 ? `👨‍✈️ ${escapeHtml(pilot1)}<br>` : '') +
-                    (pilot2 ? `🧭 ${escapeHtml(pilot2)}<br>` : '') +
-                    (category ? `🏆 ${escapeHtml(category)}<br>` : '') +
+                let popupContent = `<div style="min-width:220px;font-size:12px;"><b>Ст.номер ${escapeHtml(startNumber)}</b><br>` +
+                    (pilot1 ? `<b>Экипаж:</b><br> - ${escapeHtml(pilot1)}<br> - ${escapeHtml(pilot2)}<br>` : '') +
+                    (category ? `<b>Категория:</b> ${escapeHtml(category)}<br>` : '') +
                     `🔋 ${battery}%<br>🕒 ${formatTimeAgo(lastSeen)}<br>` +
                     `<button onclick="toggleTrack(${id})" style="margin:4px 4px 4px 0;padding:6px 12px;border-radius:9999px;background:#3b82f6;color:white;border:none;">📍 Трек</button>` +
                     `<button onclick="editNodeData(${id})" style="padding:6px 12px;border-radius:9999px;background:#64748b;color:white;border:none;">✏️ Редактировать</button></div>`;

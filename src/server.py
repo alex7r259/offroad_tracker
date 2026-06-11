@@ -12,9 +12,12 @@ import xml.etree.ElementTree as ET
 import os
 import stat
 import aiofiles
+import aiohttp
+import shutil
+from math import log, tan, pi, cos, atan, exp
 
 HOST = "0.0.0.0"
-WS_PORT = 5000
+WS_PORT = 6000
 HTTP_PORT = 8080
 DB_PATH = "tracker.db"
 AUTO_ACK = False
@@ -28,6 +31,111 @@ DEFAULT_CATEGORY_COLORS = {
     "Организатор": "#000000",
     "Базовый лагерь": "#8B4513",
 }
+
+# ----------------------------------------------------------------------
+# Фоновые задачи скачивания тайлов с прогрессом
+# ----------------------------------------------------------------------
+download_tasks = {}
+task_counter = 0
+
+async def run_tile_download(task_id, sw_lat, sw_lon, ne_lat, ne_lon, min_zoom, max_zoom):
+    """Фоновая задача, обновляет словарь download_tasks[task_id]"""
+    tiles_dir = "templates/tiles"
+    os.makedirs(tiles_dir, exist_ok=True)
+
+    # Сначала соберём все тайлы, которые действительно нужно скачать (отсутствуют)
+    all_tiles = []
+    for z in range(min_zoom, max_zoom + 1):
+        min_x, max_x, min_y, max_y = get_tile_range(sw_lat, sw_lon, ne_lat, ne_lon, z)
+        for x in range(min_x, max_x + 1):
+            for y in range(min_y, max_y + 1):
+                # Проверяем, существует ли уже файл
+                save_path = os.path.join(tiles_dir, str(z), str(x), f"{y}.png")
+                if os.path.exists(save_path):
+                    continue   # пропускаем существующий тайл
+                all_tiles.append((z, x, y))
+
+    total = len(all_tiles)
+    # Обновляем запись задачи (уже должна быть создана в api_download_tiles)
+    download_tasks[task_id]["total"] = total
+    if total == 0:
+        download_tasks[task_id]["finished"] = True
+        return
+
+    semaphore = asyncio.Semaphore(5)
+    downloaded = 0
+    failed = 0
+
+    async def download_one(z, x, y):
+        nonlocal downloaded, failed
+        async with semaphore:
+            if download_tasks[task_id].get("cancelled", False):
+                return
+            url = f"https://a.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}.png"
+            save_path = os.path.join(tiles_dir, str(z), str(x), f"{y}.png")
+            try:
+                async with aiohttp.ClientSession() as sess:
+                    async with sess.get(url) as resp:
+                        if resp.status == 200:
+                            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                            with open(save_path, 'wb') as f:
+                                f.write(await resp.read())
+                            downloaded += 1
+                        else:
+                            failed += 1
+                            print(f"Tile {z}/{x}/{y} HTTP {resp.status}")
+            except Exception as e:
+                failed += 1
+                print(f"Error {z}/{x}/{y}: {e}")
+            finally:
+                download_tasks[task_id]["downloaded"] = downloaded
+                download_tasks[task_id]["failed"] = failed
+
+    # Запускаем все задачи конкурентно с ограничением
+    await asyncio.gather(*[download_one(z, x, y) for (z, x, y) in all_tiles])
+    download_tasks[task_id]["finished"] = True
+
+# Новый эндпоинт – запуск скачивания
+async def api_download_tiles(request):
+    global task_counter
+    try:
+        data = await request.json()
+        bounds = data.get("bounds")
+        min_zoom = int(data.get("minZoom"))
+        max_zoom = int(data.get("maxZoom"))
+        if not bounds or len(bounds) != 4:
+            return web.json_response({"error": "bounds must be [south, west, north, east]"}, status=400)
+        sw_lat, sw_lon, ne_lat, ne_lon = bounds
+        task_counter += 1
+        task_id = f"task_{task_counter}"
+        # Создаём запись задачи сразу, чтобы статус был доступен
+        download_tasks[task_id] = {
+            "total": 0,
+            "downloaded": 0,
+            "failed": 0,
+            "finished": False,
+            "cancelled": False,
+            "min_zoom": min_zoom,
+            "max_zoom": max_zoom
+        }
+        # Запускаем фоновую задачу (она дополнит информацию)
+        asyncio.create_task(run_tile_download(task_id, sw_lat, sw_lon, ne_lat, ne_lon, min_zoom, max_zoom))
+        return web.json_response({"status": "started", "task_id": task_id})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+        
+async def api_download_status(request):
+    task_id = request.query.get("task_id")
+    if not task_id or task_id not in download_tasks:
+        return web.json_response({"error": "task not found"}, status=404)
+    return web.json_response(download_tasks[task_id])
+
+async def api_cancel_download(request):
+    task_id = request.query.get("task_id")
+    if not task_id or task_id not in download_tasks:
+        return web.json_response({"error": "task not found"}, status=404)
+    download_tasks[task_id]["cancelled"] = True
+    return web.json_response({"status": "cancelled"})
 
 def load_category_colors():
     global CATEGORY_COLORS
@@ -643,6 +751,21 @@ async def index_page(request):
     async with aiofiles.open('templates/index.html', 'r', encoding='utf-8') as f:
         content = await f.read()
     return web.Response(text=content, content_type='text/html')
+    
+async def map_css(request):
+    async with aiofiles.open('templates/map.css', 'r', encoding='utf-8') as f:
+        content = await f.read()
+    return web.Response(text=content, content_type='text/css')
+    
+async def map_js(request):
+    async with aiofiles.open('templates/map.js', 'r', encoding='utf-8') as f:
+        content = await f.read()
+    return web.Response(text=content, content_type='application/json')
+
+async def tile_download_page(request):
+    async with aiofiles.open('templates/tile_download.html', 'r', encoding='utf-8') as f:
+        content = await f.read()
+    return web.Response(text=content, content_type='text/html')
 
 # Страница управления узлами
 async def nodes_page(request):
@@ -657,11 +780,101 @@ async def waypoints_manage_page(request):
     return web.Response(text=content, content_type='text/html')
 
 # ----------------------------------------------------------------------
+# Функции для работы с тайлами (Web Mercator)
+# ----------------------------------------------------------------------
+def lon_to_tile_x(lon, zoom):
+    n = 2 ** zoom
+    return int((lon + 180) / 360 * n)
+
+def lat_to_tile_y(lat, zoom):
+    n = 2 ** zoom
+    lat_rad = lat * pi / 180
+    y = (1 - log(tan(lat_rad) + 1 / cos(lat_rad)) / pi) / 2
+    return int(y * n)
+
+def get_tile_range(sw_lat, sw_lon, ne_lat, ne_lon, zoom):
+    """Возвращает minX, maxX, minY, maxY для области в заданном зуме"""
+    min_x = lon_to_tile_x(sw_lon, zoom)
+    max_x = lon_to_tile_x(ne_lon, zoom)
+    min_y = lat_to_tile_y(ne_lat, zoom)   # y идёт сверху вниз
+    max_y = lat_to_tile_y(sw_lat, zoom)
+    # упорядочиваем
+    if min_x > max_x:
+        min_x, max_x = max_x, min_x
+    if min_y > max_y:
+        min_y, max_y = max_y, min_y
+    # ограничиваем допустимыми значениями
+    max_tile = 2 ** zoom - 1
+    min_x = max(0, min_x)
+    max_x = min(max_tile, max_x)
+    min_y = max(0, min_y)
+    max_y = min(max_tile, max_y)
+    return min_x, max_x, min_y, max_y
+
+async def download_tile(session, z, x, y, save_path):
+    """Скачивает один тайл и сохраняет в файл. Возвращает True при успехе."""
+    url = f"https://a.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}.png"
+    try:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                with open(save_path, 'wb') as f:
+                    f.write(await resp.read())
+                return True
+            else:
+                print(f"Tile {z}/{x}/{y} HTTP {resp.status}")
+                return False
+    except Exception as e:
+        print(f"Error downloading {z}/{x}/{y}: {e}")
+        return False
+
+async def download_tiles_for_area(sw_lat, sw_lon, ne_lat, ne_lon, min_zoom, max_zoom):
+    """Скачивает все тайлы в заданной области и диапазоне зумов"""
+    tiles_dir = "templates/tiles"
+    os.makedirs(tiles_dir, exist_ok=True)
+    
+    total = 0
+    failed = 0
+    # Сначала соберём список всех (z,x,y)
+    tasks = []
+    for z in range(min_zoom, max_zoom + 1):
+        min_x, max_x, min_y, max_y = get_tile_range(sw_lat, sw_lon, ne_lat, ne_lon, z)
+        for x in range(min_x, max_x + 1):
+            for y in range(min_y, max_y + 1):
+                total += 1
+                tasks.append((z, x, y))
+    
+    if not tasks:
+        return 0, 0
+    
+    # Ограничиваем параллельные запросы, чтобы не перегружать сервер
+    semaphore = asyncio.Semaphore(5)
+    
+    async def limited_download(z, x, y):
+        async with semaphore:
+            save_path = os.path.join(tiles_dir, str(z), str(x), f"{y}.png")
+            return await download_tile(session, z, x, y, save_path)
+    
+    async with aiohttp.ClientSession() as session:
+        # Запускаем все задачи с ограничением
+        results = await asyncio.gather(*[limited_download(z, x, y) for (z, x, y) in tasks])
+    
+    failed = results.count(False)
+    return total - failed, failed
+
+# ----------------------------------------------------------------------
 # Запуск HTTP и WebSocket серверов
 # ----------------------------------------------------------------------
 async def start_http_server():
     app = web.Application()
     app.router.add_get('/', index_page)
+    app.router.add_get('/map.css', map_css)
+    app.router.add_get('/map.js', map_js)
+    app.router.add_get('/tile_download', tile_download_page)
+    app.router.add_static('/tiles', 'templates/tiles')
+    app.router.add_post('/api/download_tiles', api_download_tiles)
+    app.router.add_get('/api/download_status', api_download_status)
+    app.router.add_post('/api/cancel_download', api_cancel_download)
     app.router.add_get('/nodes', nodes_page)
     app.router.add_get('/api/nodes', api_nodes)
     app.router.add_get('/api/tracks', api_tracks)

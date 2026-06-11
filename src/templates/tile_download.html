@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>Скачать тайлы карты | Offroad Tracker</title>
+    <link rel="stylesheet" href="/map.css" />
+    <script src="/map.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0a0a;
+            color: #e5e5e5;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        .navbar {
+            background: #111827;
+            padding: 12px 20px;
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+            border-bottom: 1px solid #1f2937;
+            z-index: 1000;
+        }
+        
+        .navbar a {
+            color: #9ca3af;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            transition: all 0.2s;
+        }
+        
+        .navbar a:hover {
+            background: #374151;
+            color: white;
+        }
+        
+        .navbar .active {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        #map {
+            flex: 2;
+            height: 100%;
+        }
+        
+        .controls-panel {
+            flex: 1;
+            min-width: 320px;
+            background: #1e2937;
+            padding: 20px;
+            overflow-y: auto;
+            border-left: 1px solid #334155;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .panel-section {
+            background: #0f172a;
+            border-radius: 20px;
+            padding: 16px;
+        }
+        
+        .panel-section h3 {
+            margin: 0 0 12px 0;
+            font-size: 1.2rem;
+            color: #60a5fa;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .bounds-info {
+            background: #0f172a;
+            border-radius: 16px;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+        }
+        
+        .zoom-range {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin: 16px 0;
+        }
+        
+        .zoom-slider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .zoom-slider label {
+            width: 80px;
+            font-weight: 500;
+        }
+        
+        input[type="range"] {
+            flex: 1;
+            min-width: 150px;
+        }
+        
+        input[type="number"] {
+            width: 70px;
+            background: #1e2937;
+            border: 1px solid #475569;
+            border-radius: 12px;
+            padding: 6px;
+            color: white;
+            text-align: center;
+        }
+        
+        .tile-stats {
+            background: #0f172a;
+            border-radius: 16px;
+            padding: 12px;
+            font-size: 14px;
+        }
+        
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #1e2937;
+        }
+        
+        .warning {
+            color: #fbbf24;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+        
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 9999px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+        
+        button.primary {
+            background: linear-gradient(90deg, #3b82f6, #2563eb);
+            color: white;
+        }
+        
+        button.primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background: #475569;
+            color: white;
+        }
+        
+        .progress-container {
+            margin-top: 8px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #334155;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            width: 0%;
+            height: 100%;
+            background: #3b82f6;
+            transition: width 0.2s;
+        }
+        
+        .log-area {
+            background: #0f172a;
+            border-radius: 16px;
+            padding: 12px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #1e2937;
+            color: #cbd5e1;
+        }
+        
+        .log-error {
+            color: #f87171;
+        }
+        
+        .log-success {
+            color: #4ade80;
+        }
+        
+        .badge {
+            background: #3b82f6;
+            border-radius: 9999px;
+            padding: 2px 8px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            .controls-panel {
+                min-width: auto;
+                max-height: 50%;
+                border-left: none;
+                border-top: 1px solid #334155;
+            }
+            #map {
+                min-height: 300px;
+            }
+        }
+        
+        .coords-input {
+            display: flex;
+            gap: 8px;
+            margin: 12px 0;
+        }
+        
+        .coords-input input {
+            flex: 1;
+            background: #1e2937;
+            border: 1px solid #475569;
+            border-radius: 12px;
+            padding: 8px;
+            color: white;
+        }
+        
+        .flex-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+        }
+    </style>
+</head>
+<body>
+<div class="navbar">
+    <a href="/">🗺️ Карта</a>
+    <a href="/nodes">📡 Экипажи</a>
+    <a href="/waypoints/manage">📍 Точки</a>
+    <a href="/tile_download" class="active">📥 Скачать тайлы</a>
+</div>
+
+<div class="main-container">
+    <div id="map"></div>
+    
+    <div class="controls-panel">
+        <div class="panel-section">
+            <h3>🗺️ Выбор области</h3>
+            <button id="useCurrentBoundsBtn" class="primary" style="width:100%; margin-bottom:12px;">📌 Использовать текущий вид карты</button>
+            <div class="bounds-info">
+                <div><strong>Текущие границы:</strong></div>
+                <div id="boundsDisplay">—</div>
+            </div>
+            <div class="flex-buttons">
+                <button id="showBoundsBtn" class="secondary" style="flex:1">👁️ Показать на карте</button>
+                <button id="resetBoundsBtn" class="secondary" style="flex:1">🔄 Сбросить</button>
+            </div>
+        </div>
+        
+        <div class="panel-section">
+            <h3>🔍 Уровни зума</h3>
+            <div class="zoom-range">
+                <div class="zoom-slider">
+                    <label>Min zoom:</label>
+                    <input type="range" id="minZoom" min="4" max="18" value="10" step="1">
+                    <input type="number" id="minZoomNum" step="1" value="10">
+                </div>
+                <div class="zoom-slider">
+                    <label>Max zoom:</label>
+                    <input type="range" id="maxZoom" min="4" max="18" value="14" step="1">
+                    <input type="number" id="maxZoomNum" step="1" value="14">
+                </div>
+            </div>
+            <div class="tile-stats" id="tileStats">
+                <div class="stat-row"><span>📊 Оценка тайлов:</span><span id="totalTiles">0</span></div>
+                <div id="zoomBreakdown"></div>
+                <div class="warning" id="warningMsg"></div>
+            </div>
+        </div>
+        
+        <div class="panel-section">
+            <h3>⬇️ Скачать тайлы</h3>
+            <button id="downloadBtn" class="primary" style="width:100%;" disabled>📦 Рассчитать и скачать</button>
+            <div class="progress-container" id="progressContainer" style="display:none;">
+                <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+                <div id="progressText" style="font-size:12px; margin-top:5px; text-align:center;"></div>
+            </div>
+            <button id="cancelDownloadBtn" class="secondary" style="width:100%; margin-top:8px; display:none;">❌ Отменить</button>
+        </div>
+        
+        <div class="panel-section">
+            <h3>📋 Лог операций</h3>
+            <div class="log-area" id="logArea">
+                <div class="log-entry">📌 Готов к работе. Выберите область и уровни зума.</div>
+            </div>
+            <button id="clearLogBtn" class="secondary" style="width:100%; margin-top:8px;">🧹 Очистить лог</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ---------- Инициализация карты ----------
+    let map = L.map('map').setView([59.56, 56.59], 12);
+    
+    // Тот же тайловый сервер, что и в основном приложении
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> & CartoDB',
+        subdomains: 'abcd',
+        maxZoom: 19
+    }).addTo(map);
+    
+    // Прямоугольник для отображения выбранной области
+    let boundsRectangle = null;
+    let currentBounds = map.getBounds();
+    
+    // DOM элементы
+    const minZoomSlider = document.getElementById('minZoom');
+    const maxZoomSlider = document.getElementById('maxZoom');
+    const minZoomNum = document.getElementById('minZoomNum');
+    const maxZoomNum = document.getElementById('maxZoomNum');
+    const boundsDisplay = document.getElementById('boundsDisplay');
+    const totalTilesSpan = document.getElementById('totalTiles');
+    const zoomBreakdownDiv = document.getElementById('zoomBreakdown');
+    const warningMsg = document.getElementById('warningMsg');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const cancelBtn = document.getElementById('cancelDownloadBtn');
+    const logArea = document.getElementById('logArea');
+    
+    let currentTileEstimate = null; // { total, perZoom }
+    let isDownloading = false;
+    
+    // Функции для работы с тайловыми координатами (Web Mercator)
+    function deg2num(lat, lon, zoom) {
+        const latRad = lat * Math.PI / 180;
+        const n = Math.pow(2, zoom);
+        const x = Math.floor((lon + 180) / 360 * n);
+        const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+        return { x, y };
+    }
+    
+    function getTileRange(bounds, zoom) {
+        // bounds: L.LatLngBounds (sw, ne)
+        const sw = bounds.getSouthWest();
+        const ne = bounds.getNorthEast();
+        
+        const topLeft = deg2num(ne.lat, sw.lng, zoom);   // северо-запад
+        const bottomRight = deg2num(sw.lat, ne.lng, zoom); // юго-восток
+        
+        let minX = Math.min(topLeft.x, bottomRight.x);
+        let maxX = Math.max(topLeft.x, bottomRight.x);
+        let minY = Math.min(topLeft.y, bottomRight.y);
+        let maxY = Math.max(topLeft.y, bottomRight.y);
+        
+        // Ограничиваем допустимыми значениями
+        const maxTile = Math.pow(2, zoom) - 1;
+        minX = Math.max(0, minX);
+        maxX = Math.min(maxTile, maxX);
+        minY = Math.max(0, minY);
+        maxY = Math.min(maxTile, maxY);
+        
+        const countX = maxX - minX + 1;
+        const countY = maxY - minY + 1;
+        const total = countX * countY;
+        
+        return { minX, maxX, minY, maxY, total };
+    }
+    
+    function estimateTiles(bounds, minZoom, maxZoom) {
+        const perZoom = [];
+        let grandTotal = 0;
+        for (let z = minZoom; z <= maxZoom; z++) {
+            const range = getTileRange(bounds, z);
+            perZoom.push({ zoom: z, tiles: range.total });
+            grandTotal += range.total;
+        }
+        return { total: grandTotal, perZoom };
+    }
+    
+    function updateTileEstimate() {
+        const minZ = parseInt(minZoomSlider.value);
+        const maxZ = parseInt(maxZoomSlider.value);
+        if (minZ > maxZ) {
+            warningMsg.innerText = '⚠️ Min zoom не может быть больше Max zoom';
+            downloadBtn.disabled = true;
+            return;
+        }
+        
+        if (!currentBounds) {
+            warningMsg.innerText = '⚠️ Область не выбрана';
+            downloadBtn.disabled = true;
+            return;
+        }
+        
+        const estimate = estimateTiles(currentBounds, minZ, maxZ);
+        currentTileEstimate = estimate;
+        totalTilesSpan.innerText = estimate.total.toLocaleString();
+        
+        let breakdownHtml = '';
+        for (let item of estimate.perZoom) {
+            breakdownHtml += `<div class="stat-row"><span>Z${item.zoom}:</span><span>${item.tiles.toLocaleString()}</span></div>`;
+        }
+        zoomBreakdownDiv.innerHTML = breakdownHtml;
+        
+        // Предупреждения при большом количестве тайлов
+        if (estimate.total > 2000) {
+            warningMsg.innerHTML = '⚠️ Очень много тайлов! Скачивание может занять много времени и трафика. Рекомендуется уменьшить область или диапазон зумов.';
+            downloadBtn.disabled = false; // разрешаем, но с предупреждением
+        } else if (estimate.total > 500) {
+            warningMsg.innerHTML = '⚠️ Будет скачано более 500 тайлов. Это может занять некоторое время.';
+            downloadBtn.disabled = false;
+        } else if (estimate.total === 0) {
+            warningMsg.innerHTML = '⚠️ В выбранной области нет тайлов для указанных зумов';
+            downloadBtn.disabled = true;
+        } else {
+            warningMsg.innerHTML = '';
+            downloadBtn.disabled = false;
+        }
+    }
+    
+    function updateBoundsDisplay() {
+        if (!currentBounds) {
+            boundsDisplay.innerText = 'не выбрано';
+            return;
+        }
+        const sw = currentBounds.getSouthWest();
+        const ne = currentBounds.getNorthEast();
+        boundsDisplay.innerText = `${sw.lat.toFixed(4)}°, ${sw.lng.toFixed(4)}°  →  ${ne.lat.toFixed(4)}°, ${ne.lng.toFixed(4)}°`;
+        updateTileEstimate();
+    }
+    
+    function drawBoundsRectangle() {
+        if (boundsRectangle) map.removeLayer(boundsRectangle);
+        if (currentBounds) {
+            boundsRectangle = L.rectangle(currentBounds, { color: "#3b82f6", weight: 2, fillOpacity: 0.1, dashArray: "5, 5" }).addTo(map);
+        }
+    }
+    
+    function setCurrentBounds(bounds) {
+        currentBounds = bounds;
+        updateBoundsDisplay();
+        drawBoundsRectangle();
+    }
+    
+    // Использовать текущий вид карты
+    function useCurrentView() {
+        setCurrentBounds(map.getBounds());
+        addLog('info', `Область установлена: текущий вид карты`);
+    }
+    
+    // Показать прямоугольник и приблизить к нему
+    function showBoundsOnMap() {
+        if (currentBounds) {
+            map.fitBounds(currentBounds);
+            addLog('info', 'Карта приближена к выбранной области');
+        } else {
+            addLog('error', 'Область не задана');
+        }
+    }
+    
+    function resetBounds() {
+        setCurrentBounds(map.getBounds());
+        addLog('info', 'Границы сброшены к текущему виду');
+    }
+	
+    let currentTaskId = null;
+let statusInterval = null;
+
+async function startDownload() {
+    if (isDownloading) {
+        addLog('warning', 'Скачивание уже выполняется');
+        return;
+    }
+    
+    const minZ = parseInt(minZoomSlider.value);
+    const maxZ = parseInt(maxZoomSlider.value);
+    if (minZ > maxZ) {
+        addLog('error', 'Min zoom не может быть больше Max zoom');
+        return;
+    }
+    
+    if (!currentBounds) {
+        addLog('error', 'Сначала выберите область на карте');
+        return;
+    }
+    
+    const estimate = estimateTiles(currentBounds, minZ, maxZ);
+    if (estimate.total === 0) {
+        addLog('error', 'Нет тайлов для скачивания в выбранной области');
+        return;
+    }
+    
+    if (estimate.total > 3000 && !confirm(`⚠️ Скачать ${estimate.total.toLocaleString()} тайлов? Может занять много времени.`)) return;
+    if (estimate.total > 800 && !confirm(`⚠️ Скачать ${estimate.total} тайлов?`)) return;
+    
+    isDownloading = true;
+    downloadBtn.disabled = true;
+    cancelBtn.style.display = 'block';
+    progressContainer.style.display = 'block';
+    progressFill.style.width = '0%';
+    progressText.innerText = 'Отправка запроса...';
+    
+    const bounds = currentBounds;
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+    const payload = {
+        bounds: [sw.lat, sw.lng, ne.lat, ne.lng],
+        minZoom: minZ,
+        maxZoom: maxZ
+    };
+    
+    try {
+        const response = await fetch('/api/download_tiles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+        currentTaskId = result.task_id;
+		localStorage.setItem('activeDownloadTask', currentTaskId);
+        addLog('info', `Задача ${currentTaskId} запущена. Отслеживаем прогресс...`);
+        
+        // Начинаем опрос статуса
+        statusInterval = setInterval(async () => {
+    if (!currentTaskId) return;
+    try {
+        const statusResp = await fetch(`/api/download_status?task_id=${currentTaskId}`);
+        if (statusResp.status === 404) {
+            // Задача ещё не создалась – просто ждём
+            progressText.innerText = 'Ожидание запуска задачи...';
+            return;
+        }
+        if (!statusResp.ok) {
+            addLog('error', `Ошибка получения статуса: ${statusResp.status}`);
+            resetDownloadUI();
+            return;
+        }
+        const status = await statusResp.json();
+        const percent = status.total ? (status.downloaded / status.total) * 100 : 0;
+        progressFill.style.width = `${percent}%`;
+        progressText.innerText = `Скачано ${status.downloaded} из ${status.total} (ошибок: ${status.failed})`;
+        
+        if (status.finished) {
+            clearInterval(statusInterval);
+            statusInterval = null;
+            addLog('success', `✅ Завершено: ${status.downloaded} тайлов, ошибок: ${status.failed}`);
+            progressFill.style.width = '100%';
+            progressText.innerText = `Готово: ${status.downloaded} тайлов сохранено.`;
+            setTimeout(() => { progressContainer.style.display = 'none'; }, 5000);
+            resetDownloadUI();
+        } else if (status.cancelled) {
+            clearInterval(statusInterval);
+            statusInterval = null;
+            addLog('warning', 'Скачивание отменено');
+            resetDownloadUI();
+        }
+    } catch (err) {
+        addLog('error', `Ошибка опроса статуса: ${err.message}`);
+        resetDownloadUI();
+    }
+}, 1000);
+        
+    } catch (err) {
+        addLog('error', `Ошибка запуска: ${err.message}`);
+        resetDownloadUI();
+    }
+}
+
+function resetDownloadUI() {
+    if (statusInterval) clearInterval(statusInterval);
+    statusInterval = null;
+    isDownloading = false;
+    downloadBtn.disabled = false;
+    cancelBtn.style.display = 'none';
+    currentTaskId = null;
+    localStorage.removeItem('activeDownloadTask');
+    setTimeout(() => { progressContainer.style.display = 'none'; }, 1000);
+}
+
+async function cancelDownload() {
+    if (!currentTaskId) return;
+    addLog('info', 'Отмена скачивания...');
+    try {
+        await fetch(`/api/cancel_download?task_id=${currentTaskId}`, { method: 'POST' });
+    } catch (err) {
+        addLog('error', `Ошибка отмены: ${err.message}`);
+    }
+}
+
+    function addLog(type, message) {
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry log-${type === 'error' ? 'error' : (type === 'success' ? 'success' : '')}`;
+        const timestamp = new Date().toLocaleTimeString();
+        logEntry.innerText = `[${timestamp}] ${message}`;
+        logArea.appendChild(logEntry);
+        logArea.scrollTop = logArea.scrollHeight;
+        // Ограничим количество логов (оставим последние 200)
+        while (logArea.children.length > 200) {
+            logArea.removeChild(logArea.firstChild);
+        }
+    }
+    
+    function clearLog() {
+        logArea.innerHTML = '';
+        addLog('info', 'Лог очищен');
+    }
+    
+    // Связывание слайдеров с числовыми полями
+    function bindZoomInputs() {
+        minZoomSlider.addEventListener('input', () => {
+            minZoomNum.value = minZoomSlider.value;
+            if (parseInt(minZoomSlider.value) > parseInt(maxZoomSlider.value)) {
+                maxZoomSlider.value = minZoomSlider.value;
+                maxZoomNum.value = minZoomSlider.value;
+            }
+            updateTileEstimate();
+        });
+        minZoomNum.addEventListener('input', () => {
+            let val = parseInt(minZoomNum.value);
+            if (isNaN(val)) val = 10;
+            val = Math.min(18, Math.max(4, val));
+            minZoomSlider.value = val;
+            minZoomNum.value = val;
+            if (val > parseInt(maxZoomSlider.value)) {
+                maxZoomSlider.value = val;
+                maxZoomNum.value = val;
+            }
+            updateTileEstimate();
+        });
+        maxZoomSlider.addEventListener('input', () => {
+            maxZoomNum.value = maxZoomSlider.value;
+            if (parseInt(maxZoomSlider.value) < parseInt(minZoomSlider.value)) {
+                minZoomSlider.value = maxZoomSlider.value;
+                minZoomNum.value = maxZoomSlider.value;
+            }
+            updateTileEstimate();
+        });
+        maxZoomNum.addEventListener('input', () => {
+            let val = parseInt(maxZoomNum.value);
+            if (isNaN(val)) val = 14;
+            val = Math.min(18, Math.max(4, val));
+            maxZoomSlider.value = val;
+            maxZoomNum.value = val;
+            if (val < parseInt(minZoomSlider.value)) {
+                minZoomSlider.value = val;
+                minZoomNum.value = val;
+            }
+            updateTileEstimate();
+        });
+    }
+    
+    // Инициализация событий
+    document.getElementById('useCurrentBoundsBtn').addEventListener('click', useCurrentView);
+    document.getElementById('showBoundsBtn').addEventListener('click', showBoundsOnMap);
+    document.getElementById('resetBoundsBtn').addEventListener('click', resetBounds);
+    downloadBtn.addEventListener('click', startDownload);
+    cancelBtn.addEventListener('click', cancelDownload);
+    document.getElementById('clearLogBtn').addEventListener('click', clearLog);
+    
+    // При изменении границ карты вручную - обновляем текущую область
+    map.on('moveend', () => {
+        if (!boundsRectangle) {
+            // Если прямоугольник не отрисован, синхронизируем текущие границы карты с выбранной областью
+            setCurrentBounds(map.getBounds());
+        } else {
+            // Но не перезаписываем выбранную область автоматически, иначе пользователь запутается.
+            // Оставим как есть, только если пользователь явно нажмёт "использовать текущий вид"
+        }
+    });
+    
+    // При клике на карту можно обновлять? Нет, оставим по кнопкам
+    bindZoomInputs();
+    useCurrentView(); // установить начальные границы
+	restoreDownloadTask();
+    
+	// Функция восстановления незавершённой задачи
+function restoreDownloadTask() {
+    const savedTaskId = localStorage.getItem('activeDownloadTask');
+    if (!savedTaskId) return;
+    
+    addLog('info', `Обнаружена незавершённая задача ${savedTaskId}. Проверяем статус...`);
+    currentTaskId = savedTaskId;
+    isDownloading = true;
+    downloadBtn.disabled = true;
+    cancelBtn.style.display = 'block';
+    progressContainer.style.display = 'block';
+    progressFill.style.width = '0%';
+    progressText.innerText = 'Восстановление прогресса...';
+    
+    if (statusInterval) clearInterval(statusInterval);
+    statusInterval = setInterval(async () => {
+        if (!currentTaskId) return;
+        try {
+            const statusResp = await fetch(`/api/download_status?task_id=${currentTaskId}`);
+            if (statusResp.status === 404) {
+                addLog('warning', `Задача ${currentTaskId} не найдена (возможно, сервер перезапущен).`);
+                localStorage.removeItem('activeDownloadTask');
+                resetDownloadUI();
+                return;
+            }
+            if (!statusResp.ok) {
+                addLog('error', `Ошибка получения статуса: ${statusResp.status}`);
+                resetDownloadUI();
+                return;
+            }
+            const status = await statusResp.json();
+            const percent = status.total ? (status.downloaded / status.total) * 100 : 0;
+            progressFill.style.width = `${percent}%`;
+            progressText.innerText = `Скачано ${status.downloaded} из ${status.total} (ошибок: ${status.failed})`;
+            
+            if (status.finished) {
+                clearInterval(statusInterval);
+                statusInterval = null;
+                addLog('success', `✅ Завершено: ${status.downloaded} тайлов, ошибок: ${status.failed}`);
+                progressFill.style.width = '100%';
+                progressText.innerText = `Готово: ${status.downloaded} тайлов сохранено.`;
+                localStorage.removeItem('activeDownloadTask');
+                setTimeout(() => { progressContainer.style.display = 'none'; }, 5000);
+                resetDownloadUI();
+            } else if (status.cancelled) {
+                clearInterval(statusInterval);
+                statusInterval = null;
+                addLog('warning', 'Скачивание отменено');
+                localStorage.removeItem('activeDownloadTask');
+                resetDownloadUI();
+            }
+        } catch (err) {
+            addLog('error', `Ошибка опроса статуса: ${err.message}`);
+            resetDownloadUI();
+        }
+    }, 1000);
+}
+	
+    addLog('success', 'Страница загружена. Выберите уровни зума и область для скачивания тайлов.');
+</script>
+</body>
+</html>

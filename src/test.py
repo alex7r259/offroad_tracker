@@ -18,11 +18,11 @@ from datetime import datetime
 
 # Конфигурация по умолчанию
 DEFAULT_HOST = "localhost"
-DEFAULT_WS_PORT = 5000
-DEFAULT_NODES = 3
+DEFAULT_WS_PORT = 6000
+DEFAULT_NODES = 4
 DEFAULT_INTERVAL = 3  # секунд между отправками для каждого узла
-DEFAULT_START_LAT = 59.566666
-DEFAULT_START_LON = 56.59555
+DEFAULT_START_LAT = 59.46059
+DEFAULT_START_LON = 56.55113
 
 class SimulatedNode:
     def __init__(self, node_id, start_lat, start_lon):

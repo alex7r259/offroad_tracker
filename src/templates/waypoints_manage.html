@@ -3,19 +3,56 @@
 <head>
     <meta charset="utf-8">
     <title>Управление точками (КП/лагерь)</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="/map.css" />
+    <script src="/map.js"></script>
     <style>
-        body { margin:0; padding:0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
-        #topbar {
-            background: #2c3e50;
-            color: white;
-            padding: 10px;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0a0a;
+            color: #e5e5e5;
             display: flex;
-            gap: 10px;
+            flex-direction: column;
+            height: 100vh;
+        }
+		        
+        .navbar {
+            background: #111827;
+            padding: 12px 20px;
+            display: flex;
+            gap: 16px;
             flex-wrap: wrap;
             align-items: center;
+            border-bottom: 1px solid #1f2937;
+            z-index: 1000;
         }
+        
+        .navbar a {
+            color: #9ca3af;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            transition: all 0.2s;
+        }
+        
+        .navbar a:hover {
+            background: #374151;
+            color: white;
+        }
+        
+        .navbar .active {
+            background: #3b82f6;
+            color: white;
+        }
+		
         #topbar button, #topbar input, #topbar select {
             padding: 6px 12px;
             border: none;
@@ -62,15 +99,19 @@
         hr { margin: 10px 0; }
     </style>
 </head>
+
 <body>
-<div id="topbar">
-    <h3 style="margin:0;">📌 Редактор точек</h3>
-    <a href="/" style="color:white; text-decoration:none; background:#e67e22; padding:6px 12px; border-radius:4px;">← Карта</a>
+<div class="navbar">
+    <a href="/">🗺️ Карта</a>
+    <a href="/nodes">📡 Экипажи</a>
+    <a href="/waypoints/manage" class="active">📍 Точки</a>
+    <a href="/tile_download">📥 Скачать тайлы</a>
     <span style="flex:1"></span>
     <button id="exportGpxBtn">📥 Экспорт GPX</button>
     <label>📂 Импорт GPX: <input type="file" id="gpxFile" accept=".gpx"></label>
     <button id="importGpxBtn">Загрузить</button>
 </div>
+
 <div id="map"></div>
 <div id="table-container">
     <h4>Добавить / редактировать точку</h4>
@@ -106,7 +147,7 @@
 </div>
 <script>
     var map = L.map('map').setView([59.56, 56.59], 12);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('/tiles/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
     }).addTo(map);
     var markerLayer = L.layerGroup().addTo(map);
@@ -163,12 +204,12 @@
         if (displayText.length > 4) fontSize = 9;
         else if (displayText.length > 2) fontSize = 11;
         
-        const html = `<div style="width: 28px; height: 28px; border-radius: 50%; ${gradientStyle} border: 2px solid white; display: flex; align-items: center; justify-content: center; font-weight: 700; color: black; font-size: ${fontSize}px; text-shadow: 0px 0px 2px rgba(255,255,255,0.8); box-shadow: 0 2px 4px rgba(0,0,0,0.2); text-align: center; line-height: 1; word-break: keep-all; padding: 0 2px;">${escapeHtml(displayText)}</div>`;
+        const html = `<div style="width: 26px; height: 28px; border-radius: 50%; ${gradientStyle} border: 2px solid white; display: flex; align-items: center; justify-content: center; font-weight: 700; color: black; font-size: ${fontSize}px; text-shadow: 0px 0px 2px rgba(255,255,255,0.8); box-shadow: 0 2px 4px rgba(0,0,0,0.2); text-align: center; line-height: 1; word-break: keep-all; padding: 0 2px;">${escapeHtml(displayText)}</div>`;
         
         return L.divIcon({
             className: '',
             html: html,
-            iconSize: [28, 28],
+            iconSize: [26, 28],
             popupAnchor: [0, -13]
         });
     }

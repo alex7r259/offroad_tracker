@@ -99,13 +99,13 @@
     <h4>Список точек</h4>
     <table id="waypointsTable">
         <thead>
-            <tr><th>ID</th><th>Название</th><th>Широта</th><th>Долгота</th><th>Тип</th><th>Категория</th><th>Описание</th><th>Действия</th></tr>
+            <tr><th>ID</th><th>Название</th><th>Широта</th><th>Долгота</th><th>Тип</th><th>Категории</th><th>Описание</th><th>Действия</th></tr>
         </thead>
         <tbody></tbody>
     </table>
 </div>
 <script>
-    var map = L.map('map').setView([55.751244, 37.618423], 10);
+    var map = L.map('map').setView([59.56, 56.59], 12);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
     }).addTo(map);
@@ -121,103 +121,153 @@
         return categoryColors[cat] || '#888888';
     }
 
-    function createIcon(category, type) {
-        var color = getColor(category);
-        var html = '<div style="background:'+color+'; width:28px; height:28px; border-radius:4px; border:2px solid white; text-align:center; line-height:24px;">📍</div>';
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    function createWaypointIcon(categories, type, name) {
+        // Базовый лагерь – иконка флага
         if (type === 'basecamp') {
-            html = '<div style="background:'+color+'; width:32px; height:32px; border-radius:50%; border:2px solid white; text-align:center; line-height:28px;">🏕️</div>';
+            return L.divIcon({
+                className: '',
+                html: `<div style="background:rgba(0,0,0,0); width:36px; height:36px; text-align:center; line-height:22px; font-weight:700; color:black; font-size:16px;">🏁</div>`,
+                iconSize: [36, 36],
+                popupAnchor: [0, -18]
+            });
         }
-        return L.divIcon({ className: '', html: html, iconSize: [28,28] });
+
+        let cats = (categories && categories.length) ? categories : ['default'];
+        let colors = cats.map(cat => categoryColors[cat] || '#64748b');
+        let gradientStyle = '';
+        if (colors.length === 1) {
+            gradientStyle = `background: ${colors[0]};`;
+        } else {
+            const angleStep = 360 / colors.length;
+            const stops = colors.map((col, idx) => {
+                const startDeg = idx * angleStep;
+                const endDeg = (idx + 1) * angleStep;
+                return `${col} ${startDeg}deg ${endDeg}deg`;
+            }).join(', ');
+            gradientStyle = `background: conic-gradient(${stops});`;
+        }
+        
+        // Полное название (номер) и динамический размер шрифта
+        const displayText = name ? name.toString() : '?';
+        let fontSize = 13;
+        if (displayText.length > 4) fontSize = 9;
+        else if (displayText.length > 2) fontSize = 11;
+        
+        const html = `<div style="width: 28px; height: 28px; border-radius: 50%; ${gradientStyle} border: 2px solid white; display: flex; align-items: center; justify-content: center; font-weight: 700; color: black; font-size: ${fontSize}px; text-shadow: 0px 0px 2px rgba(255,255,255,0.8); box-shadow: 0 2px 4px rgba(0,0,0,0.2); text-align: center; line-height: 1; word-break: keep-all; padding: 0 2px;">${escapeHtml(displayText)}</div>`;
+        
+        return L.divIcon({
+            className: '',
+            html: html,
+            iconSize: [28, 28],
+            popupAnchor: [0, -13]
+        });
     }
 
     async function loadWaypoints() {
-    const resp = await fetch('/api/waypoints');
-    const wps = await resp.json();
-    markerLayer.clearLayers();
-    const tbody = document.querySelector('#waypointsTable tbody');
-    tbody.innerHTML = '';
-    for (let wp of wps) {
-        const firstCat = (wp.categories && wp.categories.length) ? wp.categories[0] : '';
-        const icon = createIcon(firstCat, wp.type);
-        const marker = L.marker([wp.lat, wp.lon], { icon: icon }).bindPopup(`<b>${wp.name}</b><br>${wp.type === 'basecamp' ? 'Лагерь' : 'КП'}<br>Категории: ${(wp.categories || []).join(', ')}`);
-        markerLayer.addLayer(marker);
-        const row = tbody.insertRow();
-        row.insertCell(0).innerText = wp.id;
-        row.insertCell(1).innerText = wp.name;
-        row.insertCell(2).innerText = wp.lat;
-        row.insertCell(3).innerText = wp.lon;
-        row.insertCell(4).innerText = wp.type === 'basecamp' ? 'Лагерь' : 'КП';
-        row.insertCell(5).innerText = (wp.categories || []).join(', ');
-        row.insertCell(6).innerText = wp.description || '';
-        const actions = row.insertCell(7);
-        actions.className = 'actions';
-        const editBtn = document.createElement('button');
-        editBtn.innerText = '✏️';
-        editBtn.onclick = () => {
-            document.getElementById('editId').value = wp.id;
-            document.getElementById('name').value = wp.name;
-            document.getElementById('lat').value = wp.lat;
-            document.getElementById('lon').value = wp.lon;
-            document.getElementById('type').value = wp.type;
-            // отметить выбранные категории
-            const select = document.getElementById('categories');
-            for (let i = 0; i < select.options.length; i++) {
-                select.options[i].selected = wp.categories.includes(select.options[i].value);
-            }
-            document.getElementById('description').value = wp.description || '';
-        };
-        const delBtn = document.createElement('button');
-        delBtn.innerText = '🗑️';
-        delBtn.onclick = async () => {
-            if (confirm('Удалить точку?')) {
-                await fetch(`/api/waypoints/${wp.id}`, { method: 'DELETE' });
-                loadWaypoints();
-            }
-        };
-        actions.appendChild(editBtn);
-        actions.appendChild(delBtn);
+        const resp = await fetch('/api/waypoints');
+        const wps = await resp.json();
+        markerLayer.clearLayers();
+        const tbody = document.querySelector('#waypointsTable tbody');
+        tbody.innerHTML = '';
+        for (let wp of wps) {
+            const icon = createWaypointIcon(wp.categories || [], wp.type, wp.name);
+            const marker = L.marker([wp.lat, wp.lon], { icon: icon }).bindPopup(`
+                <b>${escapeHtml(wp.name)}</b><br>
+                ${wp.type === 'basecamp' ? '🏕️ Лагерь' : '📍 Контрольный пункт'}<br>
+                Категории: ${(wp.categories || []).join(', ')}<br>
+                ${wp.description ? escapeHtml(wp.description) : ''}
+            `);
+            markerLayer.addLayer(marker);
+            
+            const row = tbody.insertRow();
+            row.insertCell(0).innerText = wp.id;
+            row.insertCell(1).innerText = wp.name;
+            row.insertCell(2).innerText = wp.lat;
+            row.insertCell(3).innerText = wp.lon;
+            row.insertCell(4).innerText = wp.type === 'basecamp' ? 'Лагерь' : 'КП';
+            row.insertCell(5).innerText = (wp.categories || []).join(', ');
+            row.insertCell(6).innerText = wp.description || '';
+            const actions = row.insertCell(7);
+            actions.className = 'actions';
+            const editBtn = document.createElement('button');
+            editBtn.innerText = '✏️';
+            editBtn.onclick = () => {
+                document.getElementById('editId').value = wp.id;
+                document.getElementById('name').value = wp.name;
+                document.getElementById('lat').value = wp.lat;
+                document.getElementById('lon').value = wp.lon;
+                document.getElementById('type').value = wp.type;
+                const select = document.getElementById('categories');
+                for (let i = 0; i < select.options.length; i++) {
+                    select.options[i].selected = (wp.categories || []).includes(select.options[i].value);
+                }
+                document.getElementById('description').value = wp.description || '';
+            };
+            const delBtn = document.createElement('button');
+            delBtn.innerText = '🗑️';
+            delBtn.onclick = async () => {
+                if (confirm('Удалить точку?')) {
+                    await fetch(`/api/waypoints/${wp.id}`, { method: 'DELETE' });
+                    loadWaypoints();
+                }
+            };
+            actions.appendChild(editBtn);
+            actions.appendChild(delBtn);
+        }
     }
-}
 
     document.getElementById('saveBtn').onclick = async () => {
-    const id = document.getElementById('editId').value;
-    const name = document.getElementById('name').value.trim();
-    const lat = parseFloat(document.getElementById('lat').value);
-    const lon = parseFloat(document.getElementById('lon').value);
-    if (!name || isNaN(lat) || isNaN(lon)) { alert('Заполните название и координаты'); return; }
-    const categories = Array.from(document.getElementById('categories').selectedOptions).map(opt => opt.value);
-    const payload = {
-        name, lat, lon,
-        categories: categories,
-        type: document.getElementById('type').value,
-        description: document.getElementById('description').value
+        const id = document.getElementById('editId').value;
+        const name = document.getElementById('name').value.trim();
+        const lat = parseFloat(document.getElementById('lat').value);
+        const lon = parseFloat(document.getElementById('lon').value);
+        if (!name || isNaN(lat) || isNaN(lon)) { alert('Заполните название и координаты'); return; }
+        const categories = Array.from(document.getElementById('categories').selectedOptions).map(opt => opt.value);
+        const payload = {
+            name, lat, lon,
+            categories: categories,
+            type: document.getElementById('type').value,
+            description: document.getElementById('description').value
+        };
+        if (id) payload.id = parseInt(id);
+        const resp = await fetch('/api/waypoints', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (resp.ok) {
+            document.getElementById('clearBtn').click();
+            loadWaypoints();
+        } else { alert('Ошибка'); }
     };
-    if (id) payload.id = parseInt(id);
-    const resp = await fetch('/api/waypoints', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    if (resp.ok) {
-        document.getElementById('clearBtn').click();
-        loadWaypoints();
-    } else { alert('Ошибка'); }
-};
+    
     document.getElementById('clearBtn').onclick = () => {
-    document.getElementById('editId').value = '';
-    document.getElementById('name').value = '';
-    document.getElementById('lat').value = '';
-    document.getElementById('lon').value = '';
-    document.getElementById('type').value = 'checkpoint';
-    const select = document.getElementById('categories');
-    for (let i = 0; i < select.options.length; i++) {
-        select.options[i].selected = false;
-    }
-    document.getElementById('description').value = '';
-};
+        document.getElementById('editId').value = '';
+        document.getElementById('name').value = '';
+        document.getElementById('lat').value = '';
+        document.getElementById('lon').value = '';
+        document.getElementById('type').value = 'checkpoint';
+        const select = document.getElementById('categories');
+        for (let i = 0; i < select.options.length; i++) {
+            select.options[i].selected = false;
+        }
+        document.getElementById('description').value = '';
+    };
+    
     document.getElementById('exportGpxBtn').onclick = () => {
         window.location.href = '/api/waypoints/export/gpx';
     };
+    
     document.getElementById('importGpxBtn').onclick = async () => {
         const fileInput = document.getElementById('gpxFile');
         if (!fileInput.files.length) { alert('Выберите GPX файл'); return; }
@@ -231,10 +281,14 @@
             loadWaypoints();
         } else { alert('Ошибка: ' + result.error); }
     };
-    loadColors().then(() => { loadWaypoints(); });
+    
     map.on('click', (e) => {
         document.getElementById('lat').value = e.latlng.lat.toFixed(6);
         document.getElementById('lon').value = e.latlng.lng.toFixed(6);
+    });
+    
+    loadColors().then(() => {
+        loadWaypoints();
     });
 </script>
 </body>

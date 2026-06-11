@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
         * {
             box-sizing: border-box;
         }
@@ -14,8 +16,9 @@
         body { 
             margin:0; 
             padding:0; 
-            font-family: 'Segoe UI', 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-            background: #111;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0a0a;
+            color: #e5e5e5;
             touch-action: pan-x pan-y;
         }
         
@@ -25,180 +28,149 @@
             z-index: 1;
         }
         
-        /* --- АДАПТИВНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ (сворачиваемая на мобильных) --- */
+        /* Modern Control Panel */
         #controls {
             position: absolute;
-            top: 12px;
-            right: 12px;
-            background: rgba(255, 255, 255, 0.96);
-            backdrop-filter: blur(4px);
+            top: 16px;
+            right: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(16px);
             z-index: 1000;
-            padding: 14px;
-            border-radius: 20px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
-            font-size: 13px;
-            min-width: 180px;
-            max-width: 280px;
+            padding: 20px;
+            border-radius: 24px;
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+            font-size: 14px;
+            min-width: 220px;
+            max-width: 300px;
             pointer-events: auto;
-            transition: all 0.2s ease;
-            border: 1px solid rgba(0,0,0,0.08);
-            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            font-weight: 600;
+            color: #111;
         }
         
         .collapse-toggle {
-            background: transparent;
-            box-shadow: none;
-            width: auto;
-            padding: 4px 8px;
+            background: #f1f1f1;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-size: 18px;
-            margin: 0;
-            display: inline-block;
-            float: right;
-            width: auto;
-            background: #eee;
-            border-radius: 30px;
-        }
-        .collapse-toggle:hover {
-            background: #ddd;
+            cursor: pointer;
+            transition: all 0.2s;
         }
         
         .controls-main {
-            transition: opacity 0.2s;
+            transition: all 0.3s ease;
         }
         
         @media (max-width: 640px) {
             #controls {
                 top: auto;
-                bottom: 16px;
+                bottom: 20px;
                 right: 16px;
                 left: 16px;
-                width: auto;
                 max-width: none;
-                border-radius: 24px;
-                padding: 12px 14px;
-                background: rgba(255, 255, 255, 0.97);
-                backdrop-filter: blur(8px);
-                box-shadow: 0 4px 18px rgba(0,0,0,0.3);
-            }
-            .collapse-toggle {
-                display: inline-block !important;
+                border-radius: 28px;
+                padding: 18px;
             }
             #controls.collapsed .controls-main {
                 display: none;
             }
-            button {
-                padding: 10px 12px;
-                font-size: 14px;
-                margin: 5px 0;
-            }
-        }
-        
-        @media (max-width: 480px) {
-            #controls {
-                padding: 10px 12px;
-            }
-            .modal-content {
-                width: 92%;
-                padding: 18px;
-            }
-        }
-        
-        .collapse-toggle {
-            display: none;
         }
         
         button {
-            margin: 5px 0;
-            padding: 8px 10px;
+            margin: 8px 0;
+            padding: 12px 16px;
             width: 100%;
             cursor: pointer;
             border: none;
-            border-radius: 40px;
-            background-color: #f2f2f2;
-            transition: 0.2s;
-            font-weight: 500;
-            font-size: 13px;
-            font-family: inherit;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        }
-        button:hover {
-            background-color: #e0e0e0;
-            transform: scale(0.98);
-        }
-        button:active {
-            background-color: #ccc;
-        }
-        button.active-tool {
-            background-color: #2196f3;
-            color: white;
-            box-shadow: 0 0 0 2px white, 0 0 0 4px #2196f3;
+            border-radius: 9999px;
+            background: #f8f9fa;
+            color: #111;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         
-        .legend {
-            margin-top: 12px;
-            border-top: 1px solid rgba(0,0,0,0.12);
-            padding-top: 10px;
-            font-size: 12px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            justify-content: space-between;
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
         }
-        .legend span {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            margin-right: 6px;
-            vertical-align: middle;
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        button.active-tool {
+            background: linear-gradient(90deg, #3b82f6, #2563eb);
+            color: white;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
         }
         
         .layer-switch {
-            margin-top: 8px;
-            font-size: 12px;
+            margin: 16px 0;
             display: flex;
-            flex-wrap: wrap;
+            flex-direction: column;
             gap: 12px;
-            justify-content: space-between;
         }
+        
         .layer-switch label {
-            display: inline-flex;
+            display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 10px;
+            font-weight: 500;
+            color: #374151;
             cursor: pointer;
         }
         
         #enableSoundBtn {
-            background-color: #ff9800;
+            background: linear-gradient(90deg, #f59e0b, #d97706);
             color: white;
-            font-weight: bold;
-            margin-top: 6px;
+            font-weight: 700;
         }
+        
         #enableSoundBtn.sound-active {
-            background-color: #2e7d32;
+            background: linear-gradient(90deg, #10b981, #059669);
         }
         
-        .sos-alert {
-            animation: panelPulse 0.9s infinite;
-            box-shadow: 0 0 0 2px red, 0 0 0 5px rgba(255,80,40,0.6);
-            background: #fff0f0;
-        }
-        @keyframes panelPulse {
-            0% { border-left: 4px solid red; background: #fff0f0; }
-            100% { border-left: 4px solid darkred; background: #ffe0e0; }
+        #nodeCount {
+            font-weight: 700;
+            background: linear-gradient(90deg, #3b82f6, #1e40af);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            color: white;
+            font-size: 13px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         
+        /* SOS Styles – пульсация вокруг всей иконки */
         .sos-marker {
-            box-shadow: 0 0 0 3px red, 0 0 0 7px rgba(255, 69, 0, 0.7);
-            animation: sosPulse 0.85s infinite;
-            border-radius: 50%;
-        }
-        @keyframes sosPulse {
-            0% { box-shadow: 0 0 0 0 red; }
-            70% { box-shadow: 0 0 0 8px rgba(255, 0, 0, 0.4); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+            animation: sosPulse 1.2s infinite;
+            filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0.7));
         }
         
+        @keyframes sosPulse {
+            0% { filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0.7)); }
+            50% { filter: drop-shadow(0 0 20px rgba(239, 68, 68, 0)); }
+            100% { filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0)); }
+        }
+        
+        /* Modals */
         .modal {
             display: none;
             position: fixed;
@@ -207,111 +179,89 @@
             top: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.6);
-            justify-content: center;
+            background-color: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
             align-items: center;
-            backdrop-filter: blur(2px);
+            justify-content: center;
         }
+        
         .modal-content {
             background: white;
-            padding: 22px;
+            padding: 28px;
             border-radius: 28px;
-            width: 340px;
-            max-width: 90%;
-            box-shadow: 0 25px 40px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+            color: #111;
         }
+        
         .modal-content h3 {
-            margin-top: 0;
+            margin: 0 0 20px 0;
             font-size: 1.5rem;
             text-align: center;
+            font-weight: 700;
         }
+        
         .modal-content input, .modal-content select {
             width: 100%;
-            margin: 8px 0 12px;
-            padding: 10px;
-            border-radius: 30px;
-            border: 1px solid #ccc;
-            font-size: 14px;
+            margin: 8px 0 16px;
+            padding: 14px 18px;
+            border-radius: 9999px;
+            border: 1px solid #e5e7eb;
+            font-size: 15px;
+            transition: border 0.2s;
         }
+        
+        .modal-content input:focus, .modal-content select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        
         .modal-buttons {
             display: flex;
-            justify-content: space-between;
-            margin-top: 16px;
-            gap: 10px;
-        }
-        .modal-buttons button {
-            width: 48%;
-            padding: 10px;
+            gap: 12px;
+            margin-top: 24px;
         }
         
+        .modal-buttons button {
+            flex: 1;
+            padding: 14px;
+            font-size: 15px;
+        }
+        
+        /* Toast */
         .sound-toast {
             position: fixed;
-            bottom: 85px;
-            left: 20px;
-            right: 20px;
-            background: #ff5722e6;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1f2937;
             color: white;
-            padding: 10px 16px;
-            border-radius: 60px;
-            font-size: 13px;
-            text-align: center;
+            padding: 14px 24px;
+            border-radius: 9999px;
+            font-size: 14px;
+            font-weight: 600;
             z-index: 1100;
-            backdrop-filter: blur(10px);
-            font-weight: bold;
-            pointer-events: none;
-            animation: fadeInOut 4s ease forwards;
-        }
-        @keyframes fadeInOut {
-            0% { opacity: 0; transform: translateY(20px);}
-            15% { opacity: 1; transform: translateY(0);}
-            85% { opacity: 1; transform: translateY(0);}
-            100% { opacity: 0; transform: translateY(20px); visibility: hidden;}
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            animation: fadeInOut 4s forwards;
         }
         
-        #nodeCount {
-            font-weight: bold;
-            background: #2196f3;
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 40px;
-            color: white;
-            font-size: 12px;
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translate(-50%, 20px); }
+            15%, 85% { opacity: 1; transform: translate(-50%, 0); }
+            100% { opacity: 0; transform: translate(-50%, 20px); }
         }
-        .sos-badge {
-            background: red;
-            color: white;
-            border-radius: 30px;
-            padding: 2px 10px;
-            font-size: 11px;
-            margin-left: 8px;
-            display: inline-block;
-        }
-        .header-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 6px;
-        }
-        /* Стили для измерения расстояния */
+        
+        /* Ruler */
         .distance-info {
-            background: rgba(0,0,0,0.7);
+            background: rgba(17, 17, 17, 0.95);
             color: white;
-            padding: 4px 8px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: bold;
-            pointer-events: none;
-            white-space: nowrap;
-        }
-        .ruler-tooltip {
-            background: rgba(0,0,0,0.8);
-            border: 1px solid #ffcc00;
-            color: #ffcc00;
-            font-weight: bold;
-            font-size: 12px;
-            padding: 2px 6px;
-            border-radius: 20px;
-            white-space: nowrap;
+            padding: 8px 16px;
+            border-radius: 9999px;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3);
         }
     </style>
 </head>
@@ -319,20 +269,20 @@
 <div id="map"></div>
 <div id="controls">
     <div class="header-row">
-        <b>🏁 Off-road Tracker</b>
+        <b style="font-size: 1.1rem;">🏁 Off-road Tracker</b>
         <button id="collapseToggleBtn" class="collapse-toggle" title="Свернуть/развернуть">▼</button>
     </div>
     <div class="controls-main">
-        <span id="nodeCount">0</span> экипажей активны<br>
-        <button id="zoomToAllBtn">🔍 Показать всех</button>
+        <span id="nodeCount">0</span> экипажей активны<br><br>
+        <button id="zoomToAllBtn">🔍 Показать всех на карте</button>
         <div class="layer-switch">
             <label><input type="checkbox" id="toggleNodes" checked> 🚙 Экипажи</label>
             <label><input type="checkbox" id="toggleWaypoints" checked> 📍 КП и лагерь</label>
         </div>
         <button id="enableSoundBtn">🔊 Активировать звук SOS</button>
-        <button id="rulerBtn" style="background:#673ab7; color:white;">📏 Линейка</button>
-        <button id="manageWaypointsBtn" style="background:#4CAF50; color:white;">📌 Управление точками</button>
-        <button id="manageNodesBtn" style="background:#2196F3; color:white;">📡 Управление узлами</button>
+        <button id="rulerBtn" style="background: linear-gradient(90deg, #7c3aed, #6d28d9); color:white;">📏 Линейка</button>
+        <button id="manageWaypointsBtn" style="background: linear-gradient(90deg, #10b981, #059669); color:white;">📌 Управление точками</button>
+        <button id="manageNodesBtn" style="background: linear-gradient(90deg, #3b82f6, #1e40af); color:white;">📡 Управление узлами</button>
     </div>
 </div>
 
@@ -358,8 +308,8 @@
         <label>Отображаемое имя (alias):</label>
         <input type="text" id="editAlias" placeholder="необязательно">
         <div class="modal-buttons">
-            <button id="saveEditBtn">💾 Сохранить</button>
-            <button id="cancelEditBtn">❌ Отмена</button>
+            <button id="saveEditBtn" style="background: #10b981;">💾 Сохранить</button>
+            <button id="cancelEditBtn" style="background: #6b7280;">❌ Отмена</button>
         </div>
     </div>
 </div>
@@ -431,7 +381,6 @@
                 const btn = document.getElementById('enableSoundBtn');
                 btn.innerText = '🔊 Звук активирован ✓';
                 btn.classList.add('sound-active');
-                btn.style.background = '#2e7d32';
                 actuallyPlayBeep();
                 showSoundToast("✅ Звук включён, SOS сигналы будут повторяться");
             }).catch(e => { soundUnlocked = false; });
@@ -440,11 +389,10 @@
             const btn = document.getElementById('enableSoundBtn');
             btn.innerText = '🔊 Звук активен ✓';
             btn.classList.add('sound-active');
-            btn.style.background = '#2e7d32';
             actuallyPlayBeep();
         } else {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            audioCtx.resume().then(() => { soundUnlocked = true; actuallyPlayBeep(); const btn = document.getElementById('enableSoundBtn'); if(btn){ btn.innerText = '🔊 Звук активен ✓'; btn.classList.add('sound-active'); btn.style.background = '#2e7d32'; } }).catch(() => {});
+            audioCtx.resume().then(() => { soundUnlocked = true; actuallyPlayBeep(); const btn = document.getElementById('enableSoundBtn'); if(btn){ btn.innerText = '🔊 Звук активен ✓'; btn.classList.add('sound-active'); } }).catch(()=>{});
         }
     }
 
@@ -464,6 +412,7 @@
                 let badge = document.createElement('span');
                 badge.className = 'sos-badge';
                 badge.innerText = `🆘 ${unacknowledgedSos.size}`;
+                badge.style.cssText = 'background:#ef4444;color:white;border-radius:9999px;padding:2px 10px;font-size:12px;margin-left:8px;';
                 document.querySelector('#controls .header-row').appendChild(badge);
             } else existingBadge.innerText = `🆘 ${unacknowledgedSos.size}`;
         } else {
@@ -480,9 +429,9 @@
         if (unacknowledgedSos.size > 0 && soundUnlocked) playBeep();
     }
 
-    // ---------- ИНСТРУМЕНТ ЛИНЕЙКА (измерение расстояния) ----------
+    // ---------- ИНСТРУМЕНТ ЛИНЕЙКА ----------
     let rulerActive = false;
-    let rulerPoints = [];        // массив [lat,lng]
+    let rulerPoints = [];
     let rulerPolyline = null;
     let rulerMarkers = [];
     let rulerTotalDistance = 0;
@@ -493,7 +442,6 @@
         return Math.round(meters) + ' м';
     }
 
-    // Обновить отображение полилинии и маркеров, вычислить общую длину
     function updateRuler() {
         if (rulerPolyline) map.removeLayer(rulerPolyline);
         rulerMarkers.forEach(m => map.removeLayer(m));
@@ -505,28 +453,24 @@
             return;
         }
         
-        // Рисуем ломаную
-        rulerPolyline = L.polyline(rulerPoints, { color: '#ffaa33', weight: 4, dashArray: '5, 8' }).addTo(map);
+        rulerPolyline = L.polyline(rulerPoints, { color: '#fbbf24', weight: 5, dashArray: '8, 6' }).addTo(map);
         
-        // Ставим маркеры на точки
         rulerPoints.forEach((point, idx) => {
-            let marker = L.circleMarker(point, { radius: 5, color: '#ffaa33', fillColor: '#ffaa33', fillOpacity: 1, weight: 2 }).addTo(map);
-            marker.bindTooltip(`${idx+1}`, { permanent: false, direction: 'top', offset: [0, -8] });
+            let marker = L.circleMarker(point, { radius: 6, color: '#fbbf24', fillColor: '#fff', fillOpacity: 1, weight: 3 }).addTo(map);
+            marker.bindTooltip(`${idx+1}`, { permanent: true, direction: 'top', offset: [0, -10], className: 'ruler-tooltip' });
             rulerMarkers.push(marker);
         });
         
-        // Вычисляем общую длину
         let total = 0;
         for (let i = 1; i < rulerPoints.length; i++) {
             total += map.distance(rulerPoints[i-1], rulerPoints[i]);
         }
         rulerTotalDistance = total;
         
-        // Показываем информацию на карте (плавающая панель или тултип возле последней точки)
         if (rulerInfoControl) rulerInfoControl.remove();
         let lastPoint = rulerPoints[rulerPoints.length-1];
-        let infoHtml = `<div class="distance-info">📏 Общее расстояние: ${formatDistance(total)}</div>`;
-        rulerInfoControl = L.popup({ className: '', closeButton: false, autoClose: false, closeOnClick: false })
+        let infoHtml = `<div class="distance-info">📏 ${formatDistance(total)}</div>`;
+        rulerInfoControl = L.popup({ className: 'ruler-tooltip', closeButton: false, autoClose: false, closeOnClick: false })
             .setLatLng(lastPoint)
             .setContent(infoHtml)
             .openOn(map);
@@ -558,7 +502,6 @@
     
     function activateRulerTool() {
         if (rulerActive) {
-            // Если уже активна, деактивируем
             deactivateRulerTool();
             return;
         }
@@ -567,11 +510,8 @@
         rulerBtn.classList.add('active-tool');
         rulerBtn.innerText = '📏 Линейка (активна)';
         map.getContainer().style.cursor = 'crosshair';
-        // Добавляем временный обработчик кликов на карту
         map.on('click', onMapClickForRuler);
-        // Показываем подсказку
-        showSoundToast("📏 Режим линейки: кликните по карте, чтобы добавить точки. Используйте кнопки справа (очистить/отменить)");
-        // Добавляем кнопки управления линейкой прямо на панель? Проще добавить временные кнопки в панель управления, но чтобы не загромождать, сделаем две новые кнопки в панели, которые появляются при активации
+        showSoundToast("📏 Кликните по карте для добавления точек");
         addRulerControlButtons();
     }
     
@@ -580,12 +520,10 @@
         rulerActive = false;
         const rulerBtn = document.getElementById('rulerBtn');
         rulerBtn.classList.remove('active-tool');
-        rulerBtn.innerText = '📏 Линейка (измерять)';
+        rulerBtn.innerText = '📏 Линейка';
         map.getContainer().style.cursor = '';
         map.off('click', onMapClickForRuler);
-        // Убираем временные кнопки управления линейкой
         removeRulerControlButtons();
-        // Не очищаем измерения по деактивации — оставляем для просмотра, но можно предложить очистить вручную
     }
     
     function onMapClickForRuler(e) {
@@ -594,21 +532,23 @@
     }
     
     function addRulerControlButtons() {
-        // Добавляем две кнопки временно в блок controls-main после кнопки линейки
         let container = document.querySelector('#controls .controls-main');
         if (document.getElementById('tempRulerClear')) return;
+        
         let clearBtn = document.createElement('button');
         clearBtn.id = 'tempRulerClear';
-        clearBtn.innerText = '🧹 Очистить линейку';
-        clearBtn.style.background = '#ff9800';
+        clearBtn.innerText = '🧹 Очистить';
+        clearBtn.style.background = 'linear-gradient(90deg, #f59e0b, #d97706)';
         clearBtn.style.color = 'white';
-        clearBtn.onclick = () => { clearRuler(); };
+        clearBtn.onclick = () => clearRuler();
+        
         let undoBtn = document.createElement('button');
         undoBtn.id = 'tempRulerUndo';
-        undoBtn.innerText = '↩️ Удалить последнюю точку';
-        undoBtn.style.background = '#ff5722';
+        undoBtn.innerText = '↩️ Удалить последнюю';
+        undoBtn.style.background = '#ef4444';
         undoBtn.style.color = 'white';
-        undoBtn.onclick = () => { removeLastRulerPoint(); };
+        undoBtn.onclick = () => removeLastRulerPoint();
+        
         let rulerBtnRef = document.getElementById('rulerBtn');
         rulerBtnRef.insertAdjacentElement('afterend', clearBtn);
         clearBtn.insertAdjacentElement('afterend', undoBtn);
@@ -621,13 +561,7 @@
         if (undoBtn) undoBtn.remove();
     }
     
-    // Функция для принудительного завершения линейки при переключении слоёв и т.д.
-    function globalCleanRuler() {
-        if (rulerActive) deactivateRulerTool();
-        clearRuler();
-    }
-    
-    // --- Треки (без изменений) ---
+    // --- Остальной скрипт (треки, обновления) ---
     function stopTrackUpdates() {
         if (trackUpdateInterval) { clearInterval(trackUpdateInterval); trackUpdateInterval = null; }
     }
@@ -664,7 +598,7 @@
             .then(tracks => {
                 if (tracks.length) {
                     var points = tracks.map(t => [t.lat, t.lon]);
-                    var polyline = L.polyline(points, { color: '#3388ff', weight: 4, opacity: 0.7 }).addTo(map);
+                    var polyline = L.polyline(points, { color: '#60a5fa', weight: 5, opacity: 0.85 }).addTo(map);
                     polylines.set(nodeId, polyline);
                     map.fitBounds(polyline.getBounds());
                     trackUpdateInterval = setInterval(() => refreshTrack(nodeId), 5000);
@@ -675,31 +609,82 @@
         (currentTrackNodeId === nodeId) ? hideTrack() : showTrack(nodeId);
     };
 
-    // --- Вспомогательные ---
     async function loadCategoryColors() {
         try { var resp = await fetch('/api/categories'); categoryColors = await resp.json(); } catch(e) { console.error(e); }
     }
-    function getColor(category) { return categoryColors[category] || "#888888"; }
+    function getColor(category) { return categoryColors[category] || "#64748b"; }
+    
+    // Иконка экипажа: SVG автомобиль + номер под иконкой
     function createIcon(startNumber, category, sos) {
-        var color = getColor(category);
-        var displayNumber = startNumber && startNumber !== "" ? startNumber : "?";
-        var extraClass = sos ? 'sos-marker' : '';
+        const vehicleColor = getColor(category);
+        const displayNumber = (startNumber && startNumber !== "") ? startNumber : "?";
+        const sosClass = sos ? 'sos-marker' : '';
+        
+        const svgCar = `
+		    <svg width="32" height="24" viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg"> <rect x="3" y="6" width="26" height="12" rx="4" ry="4" fill="${vehicleColor}" stroke="#333" stroke-width="1.2" /> <rect x="12" y="2" width="10" height="6" rx="2" ry="2" fill="${vehicleColor}" stroke="#333" stroke-width="1" /> <rect x="14" y="3" width="6" height="4" rx="1" fill="#a0c4ff" stroke="#333" stroke-width="0.6" /> <circle cx="10" cy="18" r="5" fill="#222" stroke="#444" stroke-width="1" /> <circle cx="22" cy="18" r="5" fill="#222" stroke="#444" stroke-width="1" /> <circle cx="10" cy="18" r="2" fill="#666" /> <circle cx="22" cy="18" r="2" fill="#666" />
+			</svg>`;
+        
+        const html = `
+            <div class="${sosClass}" style="display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+                ${svgCar}
+                <div style="background: white; color: black; font-weight: bold; font-size: 11px; padding: 2px 6px; border-radius: 20px; margin-top: 2px; border: 1px solid #aaa; box-shadow: 0 1px 2px rgba(0,0,0,0.2);">
+                    ${escapeHtml(displayNumber)}
+                </div>
+            </div>
+        `;
+        
         return L.divIcon({
-            className: '',
-            html: `<div class="${extraClass}" style="background:${color}; width:22px; height:22px; border-radius:50%; border:2px solid white; text-align:center; line-height:22px; font-weight:bold; color:white; font-size:13px; text-shadow:0 0 2px black; box-shadow:0 1px 4px rgba(0,0,0,0.5);">${displayNumber}</div>`,
-            iconSize: [22, 22], popupAnchor: [0, -12]
+            className: 'custom-car-icon',
+            html: html,
+            iconSize: [32, 32],
+            popupAnchor: [0, -32]
         });
     }
-    function createWaypointIcon(category, type, name) {
-        if (type === 'basecamp') return L.divIcon({ html: '<div style="background:rgba(0,0,0,0); width:24px; height:24px; text-align:center; font-size:20px;">🏕️</div>', iconSize: [24,24], popupAnchor: [0,-12] });
-        var color = categoryColors[category] || '#6666cc';
-        var letter = name ? name.charAt(0).toUpperCase() : '●';
-        return L.divIcon({ html: `<div style="background:${color}; width:20px; height:20px; border-radius:30px; border:2px solid white; text-align:center; line-height:20px; font-weight:bold; color:white; font-size:12px;">${letter}</div>`, iconSize: [20,20], popupAnchor: [0,-10] });
+    
+    // ИСПРАВЛЕННАЯ функция для иконки КП: полный номер внутри круга с секторами
+    function createWaypointIcon(categories, type, name) {
+        if (type === 'basecamp') {
+            return L.divIcon({
+                className: '',
+                html: `<div style="background:rgba(0,0,0,0); width:36px; height:36px; text-align:center; line-height:22px; font-weight:700; color:black; font-size:16px;">🏁</div>`,
+                iconSize: [36, 36],
+                popupAnchor: [0, -18]
+            });
+        }
+        let cats = (categories && categories.length) ? categories : ['default'];
+        let colors = cats.map(cat => categoryColors[cat] || '#64748b');
+        let gradientStyle = '';
+        if (colors.length === 1) {
+            gradientStyle = `background: ${colors[0]};`;
+        } else {
+            const angleStep = 360 / colors.length;
+            const stops = colors.map((col, idx) => {
+                const startDeg = idx * angleStep;
+                const endDeg = (idx + 1) * angleStep;
+                return `${col} ${startDeg}deg ${endDeg}deg`;
+            }).join(', ');
+            gradientStyle = `background: conic-gradient(${stops});`;
+        }
+        
+        // Полное название (номер) и динамический размер шрифта
+        const displayText = name ? name.toString() : '?';
+        let fontSize = 13;
+        if (displayText.length > 4) fontSize = 9;
+        else if (displayText.length > 2) fontSize = 11;
+        
+        const html = `<div style="width: 28px; height: 28px; border-radius: 50%; ${gradientStyle} border: 2px solid white; display: flex; align-items: center; justify-content: center; font-weight: 700; color: black; font-size: ${fontSize}px; text-shadow: 0px 0px 2px rgba(255,255,255,0.8); box-shadow: 0 2px 4px rgba(0,0,0,0.2); text-align: center; line-height: 1; word-break: keep-all; padding: 0 2px;">${escapeHtml(displayText)}</div>`;
+        
+        return L.divIcon({
+            className: '',
+            html: html,
+            iconSize: [28, 28],
+            popupAnchor: [0, -13]
+        });
     }
-    function formatTimeAgo(ts) { if (!ts) return "никогда"; let s = Math.floor(Date.now()/1000)-ts; if(s<60) return s+" сек назад"; let m=Math.floor(s/60); if(m<60) return m+" мин назад"; let h=Math.floor(m/60); if(h<24) return h+" ч назад"; return Math.floor(h/24)+" дн назад"; }
+    
+    function formatTimeAgo(ts) { if (!ts) return "никогда"; let s = Math.floor(Date.now()/1000)-ts; if(s<60) return s+" сек"; let m=Math.floor(s/60); if(m<60) return m+" мин"; let h=Math.floor(m/60); if(h<24) return h+" ч"; return Math.floor(h/24)+" дн"; }
     function escapeHtml(str) { if(!str) return ""; return str.replace(/[&<>]/g, m => m==='&'?'&amp;': m==='<'?'&lt;':'&gt;'); }
 
-    // --- Редактирование экипажа ---
     function openEditModal(nodeId, data) {
         document.getElementById('editNodeId').value = nodeId;
         document.getElementById('editStartNumber').value = data.start_number || '';
@@ -727,7 +712,6 @@
     }
     function closeModal() { document.getElementById('editModal').style.display = 'none'; }
 
-    // --- Обновление экипажей ---
     async function updateNodes() {
         try {
             let resp = await fetch('/api/nodes');
@@ -743,13 +727,13 @@
                 let category = n.category || "";
                 let startNumber = (n.start_number && n.start_number !== "") ? n.start_number : id.toString();
                 let pilot1 = n.pilot1 || "", pilot2 = n.pilot2 || "", lastSeen = n.last_seen;
-                let popupContent = `<div style="min-width:200px;"><b>🏁 ${escapeHtml(startNumber)}</b><br>` +
-                    (pilot1 ? `👨‍✈️ Пилот: ${escapeHtml(pilot1)}<br>` : '') +
-                    (pilot2 ? `🧭 Штурман: ${escapeHtml(pilot2)}<br>` : '') +
-                    (category ? `🏆 Категория: ${escapeHtml(category)}<br>` : '') +
-                    `🔋 Батарея: ${battery}%<br>🕒 Последний пакет: ${formatTimeAgo(lastSeen)}<br>` +
-                    `<div style="margin-top:8px;"><button onclick="toggleTrack(${id})" style="width:auto; margin-right:5px;">📍 Трек</button>` +
-                    `<button onclick="editNodeData(${id})" style="width:auto;">✏️ Редактировать</button></div>`;
+                let popupContent = `<div style="min-width:220px;font-size:14px;"><b>🏁 ${escapeHtml(startNumber)}</b><br>` +
+                    (pilot1 ? `👨‍✈️ ${escapeHtml(pilot1)}<br>` : '') +
+                    (pilot2 ? `🧭 ${escapeHtml(pilot2)}<br>` : '') +
+                    (category ? `🏆 ${escapeHtml(category)}<br>` : '') +
+                    `🔋 ${battery}%<br>🕒 ${formatTimeAgo(lastSeen)}<br>` +
+                    `<button onclick="toggleTrack(${id})" style="margin:4px 4px 4px 0;padding:6px 12px;border-radius:9999px;background:#3b82f6;color:white;border:none;">📍 Трек</button>` +
+                    `<button onclick="editNodeData(${id})" style="padding:6px 12px;border-radius:9999px;background:#64748b;color:white;border:none;">✏️ Редактировать</button></div>`;
                 let icon = createIcon(startNumber, category, sos);
                 if (markers.has(id)) {
                     let marker = markers.get(id);
@@ -777,19 +761,24 @@
     }
 
     async function loadWaypoints() {
-        try { let resp = await fetch('/api/waypoints'); waypointsData = await resp.json(); updateWaypointsLayer(); } catch(e) { console.error(e); }
+        try { 
+            let resp = await fetch('/api/waypoints'); 
+            waypointsData = await resp.json(); 
+            updateWaypointsLayer(); 
+        } catch(e) { console.error(e); }
     }
+    
     function updateWaypointsLayer() {
         let visible = document.getElementById('toggleWaypoints').checked;
         for (let [id, m] of waypointMarkers.entries()) map.removeLayer(m);
         waypointMarkers.clear();
         if (!visible) return;
         for (let wp of waypointsData) {
-            let firstCat = (wp.categories && wp.categories.length) ? wp.categories[0] : '';
-            let icon = createWaypointIcon(firstCat, wp.type, wp.name);
+            let categoriesArray = wp.categories || [];
+            let icon = createWaypointIcon(categoriesArray, wp.type, wp.name);
             let marker = L.marker([wp.lat, wp.lon], { icon }).addTo(map);
-            let cats = (wp.categories || []).join(', ');
-            marker.bindPopup(`<b>${escapeHtml(wp.name)}</b><br>${wp.type==='basecamp'?'🏕️ Базовый лагерь':'📍 Контрольный пункт'}<br>${cats?`Категории: ${escapeHtml(cats)}` : ''}${wp.description?`<br>${escapeHtml(wp.description)}`:''}`);
+            let catsStr = categoriesArray.join(', ');
+            marker.bindPopup(`<b>${escapeHtml(wp.name)}</b><br>${wp.type==='basecamp'?'🏁️ Базовый лагерь':'📍 Контрольный пункт'}<br>${catsStr ? `Категории: ${escapeHtml(catsStr)}` : ''}${wp.description?`<br>${escapeHtml(wp.description)}`:''}`);
             waypointMarkers.set(wp.id, marker);
         }
     }
@@ -805,13 +794,13 @@
         let bounds = [];
         for (let [,m] of markers.entries()) bounds.push(m.getLatLng());
         for (let [,m] of waypointMarkers.entries()) bounds.push(m.getLatLng());
-        if (bounds.length) map.fitBounds(L.featureGroup(bounds.map(p=>L.marker(p))).getBounds().pad(0.1));
+        if (bounds.length) map.fitBounds(L.featureGroup(bounds.map(p=>L.marker(p))).getBounds().pad(0.15));
         else alert("Нет маркеров");
     }
     function manageWaypoints() { window.location.href = '/waypoints/manage'; }
     function manageNodes() { window.location.href = '/nodes'; }
 
-    // --- Инициализация UI ---
+    // --- Инициализация ---
     document.getElementById('toggleNodes').addEventListener('change', function() {
         let vis = this.checked;
         for (let [,m] of markers.entries()) vis ? m.addTo(map) : map.removeLayer(m);
@@ -825,22 +814,19 @@
     document.getElementById('enableSoundBtn').addEventListener('click', unlockSoundByUser);
     document.getElementById('rulerBtn').addEventListener('click', activateRulerTool);
     
-    // Сворачивание панели
     const collapseBtn = document.getElementById('collapseToggleBtn');
     const controlsDiv = document.getElementById('controls');
     collapseBtn.addEventListener('click', () => {
         controlsDiv.classList.toggle('collapsed');
         collapseBtn.innerText = controlsDiv.classList.contains('collapsed') ? '▲' : '▼';
     });
-    if (window.innerWidth <= 640) { /* не сворачиваем по умолчанию */ }
-    window.addEventListener('resize', () => { if (window.innerWidth > 640) controlsDiv.classList.remove('collapsed'); });
     
     window.onclick = function(event) { if (event.target == document.getElementById('editModal')) closeModal(); };
     
     function gentleAutoUnlock() {
         if (!soundUnlocked && audioCtx && audioCtx.state === 'suspended') {
-            audioCtx.resume().then(() => { soundUnlocked = true; const btn = document.getElementById('enableSoundBtn'); if(btn){ btn.innerText = '🔊 Звук активен ✓'; btn.classList.add('sound-active'); btn.style.background = '#2e7d32'; } showSoundToast("🔊 Звук разблокирован"); }).catch(()=>{});
-        } else if (!audioCtx) { audioCtx = new AudioContext(); audioCtx.resume().then(()=>{ soundUnlocked = true; }).catch(()=>{}); }
+            audioCtx.resume().then(() => { soundUnlocked = true; const btn = document.getElementById('enableSoundBtn'); if(btn){ btn.innerText = '🔊 Звук активен ✓'; btn.classList.add('sound-active'); } showSoundToast("🔊 Звук разблокирован"); }).catch(()=>{});
+        }
     }
     map.on('click', gentleAutoUnlock);
     document.body.addEventListener('touchstart', gentleAutoUnlock, { passive: true });

@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
 import os
 import stat
-from aiohttp import web
 import aiofiles
 
 HOST = "0.0.0.0"
@@ -21,7 +20,6 @@ DB_PATH = "tracker.db"
 AUTO_ACK = False
 CATEGORY_COLORS_FILE = "category_colors.json"
 
-# Цвета категорий по умолчанию
 DEFAULT_CATEGORY_COLORS = {
     "Полироль": "#00ff00",
     "Стандарт": "#0066ff",
@@ -52,6 +50,7 @@ load_category_colors()
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    # Расширенная таблица nodes
     c.execute('''
         CREATE TABLE IF NOT EXISTS nodes (
             node_id INTEGER PRIMARY KEY,
@@ -63,16 +62,23 @@ def init_db():
             last_seen INTEGER,
             lat REAL,
             lon REAL,
+            altitude REAL,
             speed REAL,
+            course REAL,
+            battery_mv INTEGER,
             battery_percent INTEGER,
             satellites INTEGER,
             rssi INTEGER,
             hops INTEGER,
             flags INTEGER,
             sos_seq INTEGER,
-            role INTEGER
+            role INTEGER,
+            uptime INTEGER,
+            link_quality INTEGER,
+            ttl INTEGER
         )
     ''')
+    # Расширенная таблица tracks
     c.execute('''
         CREATE TABLE IF NOT EXISTS tracks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,13 +86,19 @@ def init_db():
             timestamp INTEGER,
             lat REAL,
             lon REAL,
+            altitude REAL,
             speed REAL,
+            course REAL,
+            battery_mv INTEGER,
             battery_percent INTEGER,
             satellites INTEGER,
             rssi INTEGER,
             hops INTEGER,
             flags INTEGER,
-            sos_seq INTEGER
+            sos_seq INTEGER,
+            uptime INTEGER,
+            ttl INTEGER,
+            link_quality INTEGER
         )
     ''')
     c.execute('''
@@ -103,50 +115,89 @@ def init_db():
     c.execute('CREATE INDEX IF NOT EXISTS idx_tracks_node_time ON tracks(node_id, timestamp)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_tracks_timestamp ON tracks(timestamp)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_waypoints_latlon ON waypoints(lat, lon)')
+    
+    # Миграция для старых БД: добавляем недостающие столбцы
+    new_columns_nodes = [
+        ('altitude', 'REAL'),
+        ('course', 'REAL'),
+        ('battery_mv', 'INTEGER'),
+        ('uptime', 'INTEGER'),
+        ('link_quality', 'INTEGER'),
+        ('ttl', 'INTEGER')
+    ]
+    for col, col_type in new_columns_nodes:
+        try:
+            c.execute(f'ALTER TABLE nodes ADD COLUMN {col} {col_type}')
+        except sqlite3.OperationalError:
+            pass
+    new_columns_tracks = [
+        ('altitude', 'REAL'),
+        ('course', 'REAL'),
+        ('battery_mv', 'INTEGER'),
+        ('uptime', 'INTEGER'),
+        ('ttl', 'INTEGER'),
+        ('link_quality', 'INTEGER')
+    ]
+    for col, col_type in new_columns_tracks:
+        try:
+            c.execute(f'ALTER TABLE tracks ADD COLUMN {col} {col_type}')
+        except sqlite3.OperationalError:
+            pass
+    
     conn.commit()
     conn.close()
-    # Снимаем атрибут "только чтение" для Windows
     if os.name == 'nt':
         os.chmod(DB_PATH, stat.S_IWRITE)
     else:
         os.chmod(DB_PATH, 0o666)
-    print("[DB] Инициализирована (nodes, tracks, waypoints)")
+    print("[DB] Инициализирована (расширенные nodes, tracks, waypoints)")
 
 # ----------------------------------------------------------------------
-# Работа с БД (телеметрия) – без изменений
+# Работа с БД (телеметрия) – расширенная
 # ----------------------------------------------------------------------
 async def update_node_telemetry(data):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute('''
-            INSERT INTO nodes (node_id, last_seen, lat, lon, speed, battery_percent,
-                               satellites, rssi, hops, flags, sos_seq, role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(node_id) DO NOTHING
-        ''', (
-            data["nodeId"], int(datetime.now().timestamp()), data.get("lat"), data.get("lon"),
-            data.get("speed"), data.get("batteryPercent"), data.get("satellites"),
-            data.get("rssi"), data.get("hops"), data.get("flags", 0),
-            data.get("sosSequence", 0), data.get("role", 0)
-        ))
+            INSERT OR IGNORE INTO nodes (node_id) VALUES (?)
+        ''', (data["nodeId"],))
         await db.execute('''
-            UPDATE nodes
-            SET last_seen = ?,
+            UPDATE nodes SET
+                last_seen = ?,
                 lat = ?,
                 lon = ?,
+                altitude = ?,
                 speed = ?,
+                course = ?,
+                battery_mv = ?,
                 battery_percent = ?,
                 satellites = ?,
                 rssi = ?,
                 hops = ?,
                 flags = ?,
                 sos_seq = ?,
-                role = ?
+                role = ?,
+                uptime = ?,
+                link_quality = ?,
+                ttl = ?
             WHERE node_id = ?
         ''', (
-            int(datetime.now().timestamp()), data.get("lat"), data.get("lon"),
-            data.get("speed"), data.get("batteryPercent"), data.get("satellites"),
-            data.get("rssi"), data.get("hops"), data.get("flags", 0),
-            data.get("sosSequence", 0), data.get("role", 0),
+            int(datetime.now().timestamp()),
+            data.get("lat"),
+            data.get("lon"),
+            data.get("altitude"),
+            data.get("speed"),
+            data.get("course"),
+            data.get("batteryMv"),
+            data.get("batteryPercent"),
+            data.get("satellites"),
+            data.get("rssi"),
+            data.get("hops"),
+            data.get("flags", 0),
+            data.get("sosSequence", 0),
+            data.get("role", 0),
+            data.get("uptime", 0),
+            data.get("lq", 0),
+            data.get("ttl", 0),
             data["nodeId"]
         ))
         await db.commit()
@@ -155,24 +206,41 @@ async def insert_track(data):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute('''
             INSERT INTO tracks 
-            (node_id, timestamp, lat, lon, speed, battery_percent, satellites, rssi, hops, flags, sos_seq)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (node_id, timestamp, lat, lon, altitude, speed, course,
+             battery_mv, battery_percent, satellites, rssi, hops,
+             flags, sos_seq, uptime, ttl, link_quality)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            data["nodeId"], int(datetime.now().timestamp()), data.get("lat"), data.get("lon"),
-            data.get("speed"), data.get("batteryPercent"), data.get("satellites"),
-            data.get("rssi"), data.get("hops"), data.get("flags", 0),
-            data.get("sosSequence", 0)
+            data["nodeId"],
+            int(datetime.now().timestamp()),
+            data.get("lat"),
+            data.get("lon"),
+            data.get("altitude"),
+            data.get("speed"),
+            data.get("course"),
+            data.get("batteryMv"),
+            data.get("batteryPercent"),
+            data.get("satellites"),
+            data.get("rssi"),
+            data.get("hops"),
+            data.get("flags", 0),
+            data.get("sosSequence", 0),
+            data.get("uptime", 0),
+            data.get("ttl", 0),
+            data.get("lq", 0)
         ))
         await db.commit()
 
 # ----------------------------------------------------------------------
-# API для получения данных об экипажах – без изменений
+# API для получения данных (возвращаем все поля)
 # ----------------------------------------------------------------------
 async def get_all_nodes():
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute('''
             SELECT node_id, alias, start_number, pilot1, pilot2, category,
-                   lat, lon, battery_percent, flags, last_seen, rssi, sos_seq
+                   lat, lon, altitude, speed, course, battery_mv, battery_percent,
+                   satellites, rssi, hops, flags, sos_seq, role, uptime, link_quality, ttl,
+                   last_seen
             FROM nodes
         ''') as cursor:
             rows = await cursor.fetchall()
@@ -187,11 +255,22 @@ async def get_all_nodes():
             "category": row[5],
             "lat": row[6],
             "lon": row[7],
-            "battery": row[8],
-            "sos": bool(row[9] & 2),
-            "last_seen": row[10],
-            "rssi": row[11],
-            "sos_seq": row[12]
+            "altitude": row[8],
+            "speed": row[9],
+            "course": row[10],
+            "battery_mv": row[11],
+            "battery": row[12],
+            "satellites": row[13],
+            "rssi": row[14],
+            "hops": row[15],
+            "flags": row[16],
+            "sos_seq": row[17],
+            "role": row[18],
+            "uptime": row[19],
+            "link_quality": row[20],
+            "ttl": row[21],
+            "last_seen": row[22],
+            "sos": bool(row[16] & 2)
         })
     return nodes
 
@@ -199,18 +278,34 @@ async def get_tracks(node_id, hours=24):
     since = int((datetime.now() - timedelta(hours=hours)).timestamp())
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute('''
-            SELECT timestamp, lat, lon, speed, battery_percent 
+            SELECT timestamp, lat, lon, altitude, speed, course, battery_percent,
+                   satellites, rssi, hops, flags, uptime, link_quality
             FROM tracks 
             WHERE node_id = ? AND timestamp >= ?
             ORDER BY timestamp ASC
         ''', (node_id, since)) as cursor:
             rows = await cursor.fetchall()
-    return [{"timestamp": r[0], "lat": r[1], "lon": r[2], "speed": r[3], "battery": r[4]} for r in rows]
+    return [{
+        "timestamp": r[0],
+        "lat": r[1],
+        "lon": r[2],
+        "altitude": r[3],
+        "speed": r[4],
+        "course": r[5],
+        "battery": r[6],
+        "satellites": r[7],
+        "rssi": r[8],
+        "hops": r[9],
+        "flags": r[10],
+        "uptime": r[11],
+        "link_quality": r[12]
+    } for r in rows]
 
 async def get_node_info(node_id):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute('''
-            SELECT node_id, alias, start_number, pilot1, pilot2, category
+            SELECT node_id, alias, start_number, pilot1, pilot2, category,
+                   lat, lon, altitude, speed, course, battery_percent, uptime, link_quality
             FROM nodes WHERE node_id = ?
         ''', (node_id,)) as cursor:
             row = await cursor.fetchone()
@@ -221,15 +316,22 @@ async def get_node_info(node_id):
             "start_number": row[2],
             "pilot1": row[3],
             "pilot2": row[4],
-            "category": row[5]
+            "category": row[5],
+            "lat": row[6],
+            "lon": row[7],
+            "altitude": row[8],
+            "speed": row[9],
+            "course": row[10],
+            "battery_percent": row[11],
+            "uptime": row[12],
+            "link_quality": row[13]
         }
     return None
 
 async def update_node_info(node_id, data):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute('''
-            INSERT INTO nodes (node_id) VALUES (?)
-            ON CONFLICT(node_id) DO NOTHING
+            INSERT OR IGNORE INTO nodes (node_id) VALUES (?)
         ''', (node_id,))
         set_clauses = []
         params = []
@@ -389,7 +491,9 @@ async def handle_telemetry(data):
         return
     await update_node_telemetry(data)
     await insert_track(data)
-    print(f"[TELEMETRY] Узел {node_id}: {data.get('lat')}, {data.get('lon')} | бат={data.get('batteryPercent')}%")
+    print(f"[TELEMETRY] Узел {node_id}: {data.get('lat')}, {data.get('lon')} | "
+          f"выс={data.get('altitude')}м | скор={data.get('speed')}км/ч | "
+          f"бат={data.get('batteryPercent')}% | LQ={data.get('lq')}%")
     if data.get("flags", 0) & 2:
         print(f"[SOS] АКТИВЕН на узле {node_id} (seq={data.get('sosSequence')})")
         if AUTO_ACK:
@@ -410,6 +514,9 @@ async def ws_handler(websocket):
                     await handle_telemetry(data)
                 elif data.get("type") == "status":
                     await handle_status(data)
+                else:
+                    # Игнорируем другие сообщения (например, от эмулятора могут быть лишние)
+                    pass
             except json.JSONDecodeError:
                 print("[WS] Некорректный JSON")
     except websockets.exceptions.ConnectionClosed:

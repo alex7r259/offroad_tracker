@@ -2,48 +2,343 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>Управление узлами | Offroad Tracker</title>
     <style>
-        body { font-family: system-ui; background: #1e2a36; color: #eee; margin: 20px; }
-        h1, h2 { color: #ffaa44; }
-        table { border-collapse: collapse; width: 100%; background: #2c3e44; }
-        th, td { border: 1px solid #4a6a7a; padding: 8px; text-align: left; }
-        th { background: #1e3a4a; }
-        tr.sos { background: #a22; animation: blink 1s step-end infinite; }
-        @keyframes blink { 50% { background: #f00; } }
-        button { padding: 6px 12px; margin: 4px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button.ack { background: #f44336; }
-        button.edit { background: #2196f3; }
-        .color-picker { display: flex; gap: 20px; flex-wrap: wrap; margin: 20px 0; background: #2c3e44; padding: 15px; border-radius: 8px; }
-        .color-item { display: flex; align-items: center; gap: 10px; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 1000; }
-        .modal-content { background: #2c3e44; padding: 20px; border-radius: 8px; width: 300px; }
-        .modal-content input, .modal-content select { width: 100%; margin: 5px 0; padding: 6px; }
-        .modal-buttons { display: flex; justify-content: space-between; margin-top: 15px; }
-        .refresh { background: #ffaa44; color: black; margin-bottom: 20px; }
-        .nav { margin-bottom: 20px; }
-        .nav a { color: #ffaa44; text-decoration: none; margin-right: 15px; }
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+            background: #1e2a36;
+            color: #eee;
+            margin: 0;
+            padding: 16px;
+        }
+        h1, h2 {
+            color: #ffaa44;
+            font-size: 1.6rem;
+            margin: 0 0 0.5rem 0;
+        }
+        h2 {
+            font-size: 1.3rem;
+            margin-top: 2rem;
+        }
+        .nav {
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .nav a {
+            color: #ffaa44;
+            text-decoration: none;
+            background: rgba(0,0,0,0.3);
+            padding: 6px 14px;
+            border-radius: 30px;
+            transition: 0.2s;
+            font-size: 0.9rem;
+        }
+        .nav a:hover {
+            background: #ffaa44;
+            color: #1e2a36;
+        }
+        
+        .stats-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin: 20px 0 24px;
+        }
+        .stat-card {
+            background: #2c3e44;
+            border-radius: 24px;
+            padding: 16px 20px;
+            flex: 1;
+            min-width: 140px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            text-align: center;
+            border-left: 4px solid #ffaa44;
+        }
+        .stat-card .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #ffaa44;
+            line-height: 1.2;
+        }
+        .stat-card .stat-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 8px;
+            color: #ccddee;
+        }
+        .stat-card.sos-card {
+            border-left-color: #f44336;
+        }
+        .stat-card.sos-card .stat-value {
+            color: #ff8888;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 16px;
+            background: #2c3e44;
+            margin: 16px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            min-width: 1400px; /* ширина под все колонки + координаты */
+        }
+        th, td {
+            padding: 12px 8px;
+            text-align: left;
+            border-bottom: 1px solid #4a6a7a;
+        }
+        th {
+            background: #1e3a4a;
+            color: #ffcc88;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        tr.sos {
+            background: #a22;
+            animation: blinkSos 1s step-end infinite;
+        }
+        @keyframes blinkSos {
+            50% { background: #c33; }
+        }
+        button {
+            padding: 6px 12px;
+            margin: 2px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: 0.2s;
+        }
+        button:hover {
+            transform: scale(0.97);
+            filter: brightness(1.05);
+        }
+        button.ack {
+            background: #f44336;
+        }
+        button.edit {
+            background: #2196f3;
+        }
+        button.refresh-btn {
+            background: #ffaa44;
+            color: #1e2a36;
+            padding: 8px 18px;
+            font-weight: bold;
+        }
+        button.distance-btn {
+            background: #9c27b0;
+            font-size: 0.75rem;
+            padding: 4px 10px;
+        }
+        .color-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin: 20px 0;
+            background: #2c3e44;
+            padding: 20px;
+            border-radius: 24px;
+        }
+        .color-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #1e3a4a;
+            padding: 6px 12px;
+            border-radius: 40px;
+        }
+        .color-item label {
+            font-weight: 500;
+        }
+        input[type="color"] {
+            width: 40px;
+            height: 40px;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            background: transparent;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(4px);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #2c3e44;
+            padding: 24px;
+            border-radius: 32px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 20px 30px rgba(0,0,0,0.5);
+        }
+        .modal-content h3 {
+            margin-top: 0;
+            color: #ffaa44;
+        }
+        .modal-content input, .modal-content select {
+            width: 100%;
+            margin: 8px 0 16px;
+            padding: 12px;
+            border-radius: 40px;
+            border: none;
+            background: #1e2a36;
+            color: white;
+            font-size: 0.9rem;
+        }
+        .modal-buttons {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .modal-buttons button {
+            width: 48%;
+        }
+        .footer-note {
+            text-align: center;
+            font-size: 0.75rem;
+            margin-top: 24px;
+            color: #88aabb;
+        }
+        @media (max-width: 640px) {
+            body {
+                padding: 12px;
+            }
+            .stat-card {
+                min-width: 120px;
+                padding: 12px;
+            }
+            .stat-value {
+                font-size: 1.5rem;
+            }
+            button {
+                padding: 8px 12px;
+            }
+            .color-item {
+                width: 100%;
+                justify-content: space-between;
+            }
+            th, td {
+                padding: 8px 4px;
+                font-size: 0.75rem;
+            }
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: #ffaa44;
+            animation: spin 0.8s linear infinite;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .distance-cell {
+            font-family: monospace;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .recalc-all {
+            background: #673ab7;
+            margin-left: 12px;
+        }
+        .numeric {
+            text-align: right;
+        }
+        .small-text {
+            font-size: 0.7rem;
+            color: #bbb;
+        }
+        .coord-cell {
+            font-family: monospace;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
 <div class="nav">
-    <a href="/">← Карта</a>
-    <a href="/waypoints/manage">Управление точками</a>
+    <a href="/">🗺️ Карта</a>
+    <a href="/waypoints/manage">📍 Управление точками</a>
 </div>
-<h1>📡 Управление экипажами и SOS</h1>
-<div id="nodesTable">
-    <button class="refresh" onclick="loadNodes()">🔄 Обновить</button>
+<h1>📡 Управление экипажами</h1>
+
+<!-- Блок статистики -->
+<div class="stats-grid" id="statsGrid">
+    <div class="stat-card">
+        <div class="stat-value" id="totalCrews">0</div>
+        <div class="stat-label">Экипажей всего</div>
+    </div>
+    <div class="stat-card sos-card">
+        <div class="stat-value" id="activeSos">0</div>
+        <div class="stat-label">🆘 Активных SOS</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="avgBattery">0%</div>
+        <div class="stat-label">Средний заряд</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="avgRssi">0</div>
+        <div class="stat-label">Средний RSSI (дБм)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="avgLq">0%</div>
+        <div class="stat-label">Среднее качество LQ</div>
+    </div>
+</div>
+
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+    <button class="refresh-btn" onclick="loadNodes()">🔄 Обновить таблицу</button>
+    <button id="recalcAllDistanceBtn" class="recalc-all">📏 Пересчитать пробег для всех</button>
+</div>
+
+<div class="table-wrapper">
     <table id="nodeTable">
         <thead>
-            <tr><th>ID</th><th>Старт. №</th><th>Пилот</th><th>Штурман</th><th>Категория</th><th>Батарея</th><th>Координаты</th><th>SOS</th><th>Действия</th></tr>
+            <tr>
+                <th>ID</th><th>Ст.№</th><th>Пилот</th><th>Штурман</th><th>Категория</th>
+                <th>Координаты</th>
+                <th>Высота (м)</th><th>Скорость (км/ч)</th><th>Курс (°)</th>
+                <th>Батарея % / мВ</th><th>Спутн.</th><th>RSSI</th><th>LQ%</th>
+                <th>Uptime (ч)</th><th>Пробег (24ч)</th><th>SOS</th><th>Действия</th>
+            </tr>
         </thead>
-        <tbody id="nodeTableBody"><tr><td colspan="9">Загрузка...</td></tr></tbody>
+        <tbody id="nodeTableBody">
+            <tr><td colspan="17">Загрузка...</td></tr>
+        </tbody>
     </table>
 </div>
 
-<h2>🎨 Настройка цветов категорий</h2>
+<h2>Настройка цветов категорий</h2>
 <div id="colorSettings" class="color-picker"></div>
 <button onclick="saveColors()">💾 Сохранить цвета</button>
+<div class="footer-note">
+    * Пробег каждого экипажа рассчитывается по трекам за последние 24 часа. Uptime – время работы узла с момента включения.
+</div>
 
 <!-- Модальное окно редактирования экипажа -->
 <div id="editModal" class="modal">
@@ -69,20 +364,119 @@
 
 <script>
     let categoriesColors = {};
+    let currentNodesList = [];
+    let nodeDistances = new Map(); // km
+    
+    function distanceBetween(lat1, lon1, lat2, lon2) {
+        const R = 6371e3;
+        const φ1 = lat1 * Math.PI/180;
+        const φ2 = lat2 * Math.PI/180;
+        const Δφ = (lat2-lat1) * Math.PI/180;
+        const Δλ = (lon2-lon1) * Math.PI/180;
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    }
+    
+    async function fetchNodeDistance(nodeId) {
+        try {
+            const resp = await fetch(`/api/tracks?node_id=${nodeId}&hours=24`);
+            const tracks = await resp.json();
+            if (!tracks || tracks.length < 2) return 0;
+            let totalMeters = 0;
+            for (let i = 1; i < tracks.length; i++) {
+                const prev = tracks[i-1];
+                const curr = tracks[i];
+                if (prev.lat && prev.lon && curr.lat && curr.lon) {
+                    totalMeters += distanceBetween(prev.lat, prev.lon, curr.lat, curr.lon);
+                }
+            }
+            return totalMeters / 1000;
+        } catch(e) {
+            console.warn(`Distance error node ${nodeId}`, e);
+            return null;
+        }
+    }
+    
+    async function updateAllDistances() {
+        for (let node of currentNodesList) {
+            const row = document.querySelector(`#nodeTableBody tr[data-node-id="${node.id}"]`);
+            if (row) {
+                const distCell = row.querySelector('.distance-cell');
+                if (distCell) distCell.innerHTML = '<span class="loading-spinner"></span>';
+            }
+        }
+        const promises = currentNodesList.map(node => fetchNodeDistance(node.id));
+        const distances = await Promise.all(promises);
+        for (let i = 0; i < currentNodesList.length; i++) {
+            const node = currentNodesList[i];
+            const dist = distances[i];
+            if (dist !== null) nodeDistances.set(node.id, dist);
+            else nodeDistances.set(node.id, null);
+            const row = document.querySelector(`#nodeTableBody tr[data-node-id="${node.id}"]`);
+            if (row) {
+                const distCell = row.querySelector('.distance-cell');
+                if (distCell) {
+                    distCell.innerText = (dist !== null) ? dist.toFixed(1) + ' км' : 'ошибка';
+                }
+            }
+        }
+    }
+    
+    function formatUptime(seconds) {
+        if (!seconds) return '—';
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        if (hours > 0) return `${hours} ч ${minutes} мин`;
+        return `${minutes} мин`;
+    }
+    
+    function updateStatsFromNodes(nodes) {
+        const total = nodes.length;
+        const activeSos = nodes.filter(n => n.sos === true).length;
+        let batterySum = 0, batteryCount = 0;
+        let rssiSum = 0, rssiCount = 0;
+        let lqSum = 0, lqCount = 0;
+        for (let n of nodes) {
+            if (n.battery !== undefined && n.battery !== null && !isNaN(n.battery)) {
+                batterySum += n.battery;
+                batteryCount++;
+            }
+            if (n.rssi !== undefined && n.rssi !== null && !isNaN(n.rssi)) {
+                rssiSum += n.rssi;
+                rssiCount++;
+            }
+            if (n.link_quality !== undefined && n.link_quality !== null && !isNaN(n.link_quality)) {
+                lqSum += n.link_quality;
+                lqCount++;
+            }
+        }
+        const avgBattery = batteryCount ? (batterySum / batteryCount).toFixed(0) : 0;
+        const avgRssi = rssiCount ? (rssiSum / rssiCount).toFixed(0) : '—';
+        const avgLq = lqCount ? (lqSum / lqCount).toFixed(0) : '—';
+        document.getElementById('totalCrews').innerText = total;
+        document.getElementById('activeSos').innerText = activeSos;
+        document.getElementById('avgBattery').innerText = avgBattery + '%';
+        document.getElementById('avgRssi').innerText = avgRssi;
+        document.getElementById('avgLq').innerText = avgLq + '%';
+    }
     
     async function loadColors() {
-        const resp = await fetch('/api/categories');
-        categoriesColors = await resp.json();
-        renderColorPickers();
-        // заполнить select категорий в модальном окне
-        const select = document.getElementById('editCategory');
-        select.innerHTML = '';
-        for (let cat in categoriesColors) {
-            const option = document.createElement('option');
-            option.value = cat;
-            option.textContent = cat;
-            select.appendChild(option);
-        }
+        try {
+            const resp = await fetch('/api/categories');
+            categoriesColors = await resp.json();
+            renderColorPickers();
+            const select = document.getElementById('editCategory');
+            select.innerHTML = '';
+            for (let cat in categoriesColors) {
+                const option = document.createElement('option');
+                option.value = cat;
+                option.textContent = cat;
+                select.appendChild(option);
+            }
+        } catch(e) { console.error(e); }
     }
     
     function renderColorPickers() {
@@ -114,73 +508,142 @@
         if (resp.ok) {
             categoriesColors = newColors;
             alert('Цвета сохранены');
-            loadNodes(); // обновить таблицу, чтобы отобразились новые цвета маркеров (хотя на странице узлов нет маркеров, но для единообразия)
+            loadNodes();
         } else {
             alert('Ошибка сохранения');
         }
     }
     
     async function loadNodes() {
-        const resp = await fetch('/api/nodes');
-        const nodes = await resp.json();
-        const tbody = document.getElementById('nodeTableBody');
-        tbody.innerHTML = '';
-        for (const node of nodes) {
-            const row = tbody.insertRow();
-            if (node.sos) row.classList.add('sos');
-            row.insertCell(0).innerText = node.id;
-            row.insertCell(1).innerText = node.start_number || '—';
-            row.insertCell(2).innerText = node.pilot1 || '—';
-            row.insertCell(3).innerText = node.pilot2 || '—';
-            row.insertCell(4).innerText = node.category || '—';
-            row.insertCell(5).innerText = (node.battery !== undefined ? node.battery + '%' : '—');
-            row.insertCell(6).innerHTML = `<span title="lat=${node.lat}, lon=${node.lon}">${node.lat?.toFixed(5) || '?'}, ${node.lon?.toFixed(5) || '?'}</span>`;
-            const sosCell = row.insertCell(7);
-            sosCell.innerText = node.sos ? 'АКТИВЕН' : '—';
-            const actionsCell = row.insertCell(8);
-            const editBtn = document.createElement('button');
-            editBtn.className = 'edit';
-            editBtn.innerText = '✏️';
-            editBtn.onclick = () => openEditModal(node.id);
-            const ackBtn = document.createElement('button');
-            ackBtn.className = 'ack';
-            ackBtn.innerText = '✅ Снять SOS';
-            ackBtn.onclick = () => sendAck(node.id, node.sos_seq);
-            if (!node.sos) ackBtn.disabled = true;
-            actionsCell.appendChild(editBtn);
-            actionsCell.appendChild(ackBtn);
+        try {
+            const resp = await fetch('/api/nodes');
+            const nodes = await resp.json();
+            currentNodesList = nodes;
+            updateStatsFromNodes(nodes);
+            const tbody = document.getElementById('nodeTableBody');
+            tbody.innerHTML = '';
+            for (const node of nodes) {
+                const row = tbody.insertRow();
+                row.setAttribute('data-node-id', node.id);
+                if (node.sos) row.classList.add('sos');
+                row.insertCell(0).innerText = node.id;
+                row.insertCell(1).innerText = node.start_number || '—';
+                row.insertCell(2).innerText = node.pilot1 || '—';
+                row.insertCell(3).innerText = node.pilot2 || '—';
+                row.insertCell(4).innerText = node.category || '—';
+                
+                // Координаты
+                const lat = node.lat !== undefined && node.lat !== null ? node.lat.toFixed(6) : '?';
+                const lon = node.lon !== undefined && node.lon !== null ? node.lon.toFixed(6) : '?';
+                const coordText = `${lat}, ${lon}`;
+                const coordCell = row.insertCell(5);
+                coordCell.className = 'coord-cell';
+                coordCell.innerText = coordText;
+                
+                // Высота
+                const alt = node.altitude !== undefined && node.altitude !== null ? node.altitude.toFixed(1) : '—';
+                row.insertCell(6).innerText = alt;
+                // Скорость
+                const speed = node.speed !== undefined && node.speed !== null ? node.speed.toFixed(1) : '—';
+                row.insertCell(7).innerText = speed;
+                // Курс
+                const course = node.course !== undefined && node.course !== null ? node.course.toFixed(0) : '—';
+                row.insertCell(8).innerText = course;
+                // Батарея % и мВ
+                const batPercent = (node.battery !== undefined && node.battery !== null) ? node.battery + '%' : '—';
+                const batMv = (node.battery_mv !== undefined && node.battery_mv !== null) ? node.battery_mv + ' мВ' : '';
+                const batText = batPercent + (batMv ? `<br><span class="small-text">${batMv}</span>` : '');
+                row.insertCell(9).innerHTML = batText;
+                // Спутники
+                row.insertCell(10).innerText = (node.satellites !== undefined && node.satellites !== null) ? node.satellites : '—';
+                // RSSI
+                row.insertCell(11).innerText = (node.rssi !== undefined && node.rssi !== null) ? node.rssi : '—';
+                // Качество связи LQ
+                const lq = (node.link_quality !== undefined && node.link_quality !== null) ? node.link_quality + '%' : '—';
+                row.insertCell(12).innerText = lq;
+                // Uptime
+                const uptime = formatUptime(node.uptime);
+                row.insertCell(13).innerText = uptime;
+                
+                // Пробег
+                const distCell = row.insertCell(14);
+                distCell.className = 'distance-cell';
+                const savedDist = nodeDistances.get(node.id);
+                distCell.innerText = (savedDist !== undefined && savedDist !== null) ? savedDist.toFixed(1) + ' км' : '—';
+                
+                // SOS
+                const sosCell = row.insertCell(15);
+                sosCell.innerText = node.sos ? 'АКТИВЕН' : '—';
+                
+                // Действия
+                const actionsCell = row.insertCell(16);
+                const editBtn = document.createElement('button');
+                editBtn.className = 'edit';
+                editBtn.innerText = '✏️';
+                editBtn.onclick = () => openEditModal(node.id);
+                const ackBtn = document.createElement('button');
+                ackBtn.className = 'ack';
+                ackBtn.innerText = '✅ Снять SOS';
+                ackBtn.onclick = () => sendAck(node.id, node.sos_seq);
+                if (!node.sos) ackBtn.disabled = true;
+                const distRefreshBtn = document.createElement('button');
+                distRefreshBtn.innerText = '🔄';
+                distRefreshBtn.className = 'distance-btn';
+                distRefreshBtn.title = 'Пересчитать пробег';
+                distRefreshBtn.onclick = async () => {
+                    distRefreshBtn.disabled = true;
+                    distCell.innerHTML = '<span class="loading-spinner"></span>';
+                    const dist = await fetchNodeDistance(node.id);
+                    if (dist !== null) {
+                        nodeDistances.set(node.id, dist);
+                        distCell.innerText = dist.toFixed(1) + ' км';
+                    } else {
+                        nodeDistances.set(node.id, null);
+                        distCell.innerText = 'ошибка';
+                    }
+                    distRefreshBtn.disabled = false;
+                };
+                actionsCell.appendChild(editBtn);
+                actionsCell.appendChild(ackBtn);
+                actionsCell.appendChild(distRefreshBtn);
+            }
+        } catch(e) {
+            console.error(e);
+            document.getElementById('nodeTableBody').innerHTML = '<tr><td colspan="17">Ошибка загрузки данных</td></tr>';
         }
     }
     
     async function sendAck(nodeId, sosSeq) {
         if (!confirm(`Отправить подтверждение SOS узлу ${nodeId}?`)) return;
-        const resp = await fetch('/api/ack', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ node_id: nodeId, sos_seq: sosSeq })
-        });
-        const result = await resp.json();
-        if (result.status === 'ok') {
-            alert('ACK отправлен');
-            setTimeout(loadNodes, 1000);
-        } else {
-            alert('Ошибка: ' + (result.error || 'неизвестно'));
-        }
+        try {
+            const resp = await fetch('/api/ack', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ node_id: nodeId, sos_seq: sosSeq })
+            });
+            const result = await resp.json();
+            if (result.status === 'ok') {
+                alert('ACK отправлен');
+                setTimeout(loadNodes, 1000);
+            } else {
+                alert('Ошибка: ' + (result.error || 'неизвестно'));
+            }
+        } catch(e) { alert('Сетевая ошибка'); }
     }
     
-    let currentEditId = null;
     async function openEditModal(nodeId) {
-        currentEditId = nodeId;
-        const resp = await fetch(`/api/node?node_id=${nodeId}`);
-        let data = {};
-        if (resp.ok) data = await resp.json();
-        document.getElementById('editNodeId').value = nodeId;
-        document.getElementById('editStartNumber').value = data.start_number || '';
-        document.getElementById('editPilot1').value = data.pilot1 || '';
-        document.getElementById('editPilot2').value = data.pilot2 || '';
-        document.getElementById('editCategory').value = data.category || '';
-        document.getElementById('editAlias').value = data.alias || '';
-        document.getElementById('editModal').style.display = 'flex';
+        try {
+            const resp = await fetch(`/api/node?node_id=${nodeId}`);
+            let data = {};
+            if (resp.ok) data = await resp.json();
+            document.getElementById('editNodeId').value = nodeId;
+            document.getElementById('editStartNumber').value = data.start_number || '';
+            document.getElementById('editPilot1').value = data.pilot1 || '';
+            document.getElementById('editPilot2').value = data.pilot2 || '';
+            document.getElementById('editCategory').value = data.category || '';
+            document.getElementById('editAlias').value = data.alias || '';
+            document.getElementById('editModal').style.display = 'flex';
+        } catch(e) { console.error(e); }
     }
     
     async function saveNodeEdit() {
@@ -193,30 +656,41 @@
             category: document.getElementById('editCategory').value,
             alias: document.getElementById('editAlias').value.trim()
         };
-        const resp = await fetch('/api/node', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        if (resp.ok) {
-            closeModal();
-            loadNodes();
-        } else {
-            alert('Ошибка сохранения');
-        }
+        try {
+            const resp = await fetch('/api/node', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (resp.ok) {
+                closeModal();
+                loadNodes();
+            } else {
+                alert('Ошибка сохранения');
+            }
+        } catch(e) { alert('Ошибка сети'); }
     }
     
     function closeModal() {
         document.getElementById('editModal').style.display = 'none';
     }
     
+    loadColors();
+    loadNodes();
+    setInterval(() => loadNodes(), 5000);
+    
+    document.getElementById('recalcAllDistanceBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('recalcAllDistanceBtn');
+        btn.disabled = true;
+        btn.innerText = '⏳ Пересчёт...';
+        await updateAllDistances();
+        btn.innerText = '📏 Пересчитать пробег для всех';
+        btn.disabled = false;
+    });
+    
     document.getElementById('saveEditBtn').onclick = saveNodeEdit;
     document.getElementById('cancelEditBtn').onclick = closeModal;
     window.onclick = (e) => { if (e.target === document.getElementById('editModal')) closeModal(); };
-    
-    loadColors();
-    loadNodes();
-    setInterval(loadNodes, 5000);
 </script>
 </body>
 </html>

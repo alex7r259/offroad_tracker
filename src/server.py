@@ -17,7 +17,7 @@ import shutil
 from math import log, tan, pi, cos, atan, exp
 
 HOST = "0.0.0.0"
-WS_PORT = 6000
+WS_PORT = 5000
 HTTP_PORT = 8080
 DB_PATH = "tracker.db"
 AUTO_ACK = False

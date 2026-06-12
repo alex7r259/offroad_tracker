@@ -238,8 +238,9 @@ void handleServerCommand(const String &payload) {
     ack.targetId = target;
     ack.sequence = random(0xFFFF);
     ack.sosSequence = sosSeq;
-    ack.ttl = 3;
+    ack.ttl = 5;
     ack.crc = packetCrc(ack);
+    waitRadioReady(500);
     sendRadioPacket(ack);
     Serial.printf("Sent ACK to node %d, SOS seq %d\n", target, sosSeq);
   }

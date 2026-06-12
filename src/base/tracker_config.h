@@ -9,7 +9,7 @@ static constexpr int E220_RX_PIN = 27;  // ESP32 RX from E220 TXD
 static constexpr int E220_TX_PIN = 14;  // ESP32 TX to E220 RXD
 static constexpr int E220_AUX_PIN = 15;
 static constexpr uint32_t E220_UART_BAUD = 9600;
-static constexpr bool E220_RSSI_BYTE_ENABLED = true; // Set false if your E220 does not append RSSI bytes.
+static constexpr bool E220_RSSI_BYTE_ENABLED = false; // Set false if your E220 does not append RSSI bytes.
 
 // ATGM336H wiring: module TX -> ESP32 GPIO16, module RX -> ESP32 GPIO17.
 static constexpr int GPS_RX_PIN = 16;  // ESP32 RX from GPS TX
@@ -38,7 +38,7 @@ enum TrackerRole : uint8_t {
   ROLE_RELAY = 5,
 };
 
-static constexpr uint8_t DEFAULT_NODE_ROLE = ROLE_PARTICIPANT;
+static constexpr uint8_t DEFAULT_NODE_ROLE = ROLE_BASE;
 
 static constexpr uint8_t POSITION_TTL = 3;
 static constexpr uint8_t SOS_TTL = 5;

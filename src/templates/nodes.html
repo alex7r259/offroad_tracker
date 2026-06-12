@@ -11,16 +11,17 @@
             box-sizing: border-box;
         }
         
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-            background: #0a0a0a;
-            color: #e5e5e5;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #0a0a0a;
+    color: #e5e5e5;
+    /* height: 100vh;  ← Удалить */
+    min-height: 100vh;  /* или вовсе убрать */
+    display: flex;
+    flex-direction: column;
+}
         h1, h2 {
             color: #f1f5f9;
             margin: 0 0 1rem 0;

@@ -443,14 +443,24 @@ void handleIncomingPacket(const TrackerPacket &packet, int16_t rssi = 0) {
   if (!validPacket(packet) || isDuplicate(packet.nodeId, packet.sequence)) {
     return;
   }
+  bool needSosReset = false;
 
   xSemaphoreTake(stateMutex, portMAX_DELAY);
   updateNodeTable(packet, rssi);
   if (packet.type == PACKET_ACK_SOS && packet.targetId == nodeId &&
       (packet.sosSequence == 0 || packet.sosSequence == activeSosSequence)) {
+        if (sosActive) {
+          needSosReset = true;
+          Serial.println("SOS deactivated by ACK");
+        }
     sosAcked = true;
   }
   xSemaphoreGive(stateMutex);
+  
+  if (needSosReset && sosActive) {
+    setSosActive(false, true);   // теперь безопасно
+    Serial.println("SOS deactivated by ACK");
+  }
 
   if (packet.type == PACKET_SOS && nodeId == BASE_NODE_ID) {
     TrackerPacket ack = buildPacket(PACKET_ACK_SOS, packet.nodeId);

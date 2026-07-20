@@ -474,7 +474,7 @@ void handleNodes() {
   xSemaphoreTake(stateMutex, portMAX_DELAY);
   for (size_t i = 0; i < MAX_NODE_COUNT; i++) {
     if (!nodes[i].used) continue;
-    bool sos = nodes[i].flags & 0x0001;
+    bool sos = nodes[i].flags & 0x0002;
 	page += sos ? "<tr class='sos'>" : "<tr>";
     page += "<td>" + String(nodes[i].id) + "</td>";
     page += "<td>" + String(nodes[i].latE7 / 10000000.0, 6) + "</td>";

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
 import os
 import stat
+from pathlib import Path
 import aiofiles
 import aiohttp
 import shutil
@@ -19,9 +20,12 @@ from math import log, tan, pi, cos, atan, exp
 HOST = "0.0.0.0"
 WS_PORT = 5000
 HTTP_PORT = 8080
-DB_PATH = "tracker.db"
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "tracker.db"
+TEMPLATES_DIR = BASE_DIR / "templates"
+TILES_DIR = TEMPLATES_DIR / "tiles"
 AUTO_ACK = False
-CATEGORY_COLORS_FILE = "category_colors.json"
+CATEGORY_COLORS_FILE = BASE_DIR / "category_colors.json"
 
 DEFAULT_CATEGORY_COLORS = {
     "Полироль": "#00ff00",
@@ -40,8 +44,8 @@ task_counter = 0
 
 async def run_tile_download(task_id, sw_lat, sw_lon, ne_lat, ne_lon, min_zoom, max_zoom):
     """Фоновая задача, обновляет словарь download_tasks[task_id]"""
-    tiles_dir = "templates/tiles"
-    os.makedirs(tiles_dir, exist_ok=True)
+    tiles_dir = TILES_DIR
+    tiles_dir.mkdir(parents=True, exist_ok=True)
 
     # Сначала соберём все тайлы, которые действительно нужно скачать (отсутствуют)
     all_tiles = []
@@ -50,8 +54,8 @@ async def run_tile_download(task_id, sw_lat, sw_lon, ne_lat, ne_lon, min_zoom, m
         for x in range(min_x, max_x + 1):
             for y in range(min_y, max_y + 1):
                 # Проверяем, существует ли уже файл
-                save_path = os.path.join(tiles_dir, str(z), str(x), f"{y}.png")
-                if os.path.exists(save_path):
+                save_path = tiles_dir / str(z) / str(x) / f"{y}.png"
+                if save_path.exists():
                     continue   # пропускаем существующий тайл
                 all_tiles.append((z, x, y))
 
@@ -72,12 +76,12 @@ async def run_tile_download(task_id, sw_lat, sw_lon, ne_lat, ne_lon, min_zoom, m
             if download_tasks[task_id].get("cancelled", False):
                 return
             url = f"https://a.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}.png"
-            save_path = os.path.join(tiles_dir, str(z), str(x), f"{y}.png")
+            save_path = tiles_dir / str(z) / str(x) / f"{y}.png"
             try:
                 async with aiohttp.ClientSession() as sess:
                     async with sess.get(url) as resp:
                         if resp.status == 200:
-                            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                            save_path.parent.mkdir(parents=True, exist_ok=True)
                             with open(save_path, 'wb') as f:
                                 f.write(await resp.read())
                             downloaded += 1
@@ -123,7 +127,7 @@ async def api_download_tiles(request):
         return web.json_response({"status": "started", "task_id": task_id})
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
-        
+
 async def api_download_status(request):
     task_id = request.query.get("task_id")
     if not task_id or task_id not in download_tasks:
@@ -223,7 +227,7 @@ def init_db():
     c.execute('CREATE INDEX IF NOT EXISTS idx_tracks_node_time ON tracks(node_id, timestamp)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_tracks_timestamp ON tracks(timestamp)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_waypoints_latlon ON waypoints(lat, lon)')
-    
+
     # Миграция для старых БД: добавляем недостающие столбцы
     new_columns_nodes = [
         ('altitude', 'REAL'),
@@ -251,7 +255,7 @@ def init_db():
             c.execute(f'ALTER TABLE tracks ADD COLUMN {col} {col_type}')
         except sqlite3.OperationalError:
             pass
-    
+
     conn.commit()
     conn.close()
     if os.name == 'nt':
@@ -313,7 +317,7 @@ async def update_node_telemetry(data):
 async def insert_track(data):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute('''
-            INSERT INTO tracks 
+            INSERT INTO tracks
             (node_id, timestamp, lat, lon, altitude, speed, course,
              battery_mv, battery_percent, satellites, rssi, hops,
              flags, sos_seq, uptime, ttl, link_quality)
@@ -388,7 +392,7 @@ async def get_tracks(node_id, hours=24):
         async with db.execute('''
             SELECT timestamp, lat, lon, altitude, speed, course, battery_percent,
                    satellites, rssi, hops, flags, uptime, link_quality
-            FROM tracks 
+            FROM tracks
             WHERE node_id = ? AND timestamp >= ?
             ORDER BY timestamp ASC
         ''', (node_id, since)) as cursor:
@@ -748,34 +752,39 @@ async def api_import_gpx(request):
 # ----------------------------------------------------------------------
 # Главная страница (карта) – добавляем звук и мигание SOS
 async def index_page(request):
-    async with aiofiles.open('templates/index.html', 'r', encoding='utf-8') as f:
+    async with aiofiles.open(TEMPLATES_DIR / 'index.html', 'r', encoding='utf-8') as f:
         content = await f.read()
     return web.Response(text=content, content_type='text/html')
-    
+
 async def map_css(request):
-    async with aiofiles.open('templates/map.css', 'r', encoding='utf-8') as f:
+    async with aiofiles.open(TEMPLATES_DIR / 'map.css', 'r', encoding='utf-8') as f:
         content = await f.read()
     return web.Response(text=content, content_type='text/css')
-    
+
 async def map_js(request):
-    async with aiofiles.open('templates/map.js', 'r', encoding='utf-8') as f:
+    async with aiofiles.open(TEMPLATES_DIR / 'map.js', 'r', encoding='utf-8') as f:
         content = await f.read()
-    return web.Response(text=content, content_type='application/json')
+    return web.Response(text=content, content_type='application/javascript')
+
+async def industrial_css(request):
+    async with aiofiles.open(TEMPLATES_DIR / 'industrial.css', 'r', encoding='utf-8') as f:
+        content = await f.read()
+    return web.Response(text=content, content_type='text/css')
 
 async def tile_download_page(request):
-    async with aiofiles.open('templates/tile_download.html', 'r', encoding='utf-8') as f:
+    async with aiofiles.open(TEMPLATES_DIR / 'tile_download.html', 'r', encoding='utf-8') as f:
         content = await f.read()
     return web.Response(text=content, content_type='text/html')
 
 # Страница управления узлами
 async def nodes_page(request):
-    async with aiofiles.open('templates/nodes.html', 'r', encoding='utf-8') as f:
+    async with aiofiles.open(TEMPLATES_DIR / 'nodes.html', 'r', encoding='utf-8') as f:
         content = await f.read()
     return web.Response(text=content, content_type='text/html')
 
 # Страница управления точками – без изменений (оставляем как было)
 async def waypoints_manage_page(request):
-    async with aiofiles.open('templates/waypoints_manage.html', 'r', encoding='utf-8') as f:
+    async with aiofiles.open(TEMPLATES_DIR / 'waypoints_manage.html', 'r', encoding='utf-8') as f:
         content = await f.read()
     return web.Response(text=content, content_type='text/html')
 
@@ -817,7 +826,7 @@ async def download_tile(session, z, x, y, save_path):
     try:
         async with session.get(url) as resp:
             if resp.status == 200:
-                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                save_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(save_path, 'wb') as f:
                     f.write(await resp.read())
                 return True
@@ -830,9 +839,9 @@ async def download_tile(session, z, x, y, save_path):
 
 async def download_tiles_for_area(sw_lat, sw_lon, ne_lat, ne_lon, min_zoom, max_zoom):
     """Скачивает все тайлы в заданной области и диапазоне зумов"""
-    tiles_dir = "templates/tiles"
-    os.makedirs(tiles_dir, exist_ok=True)
-    
+    tiles_dir = TILES_DIR
+    tiles_dir.mkdir(parents=True, exist_ok=True)
+
     total = 0
     failed = 0
     # Сначала соберём список всех (z,x,y)
@@ -843,22 +852,22 @@ async def download_tiles_for_area(sw_lat, sw_lon, ne_lat, ne_lon, min_zoom, max_
             for y in range(min_y, max_y + 1):
                 total += 1
                 tasks.append((z, x, y))
-    
+
     if not tasks:
         return 0, 0
-    
+
     # Ограничиваем параллельные запросы, чтобы не перегружать сервер
     semaphore = asyncio.Semaphore(5)
-    
+
     async def limited_download(z, x, y):
         async with semaphore:
-            save_path = os.path.join(tiles_dir, str(z), str(x), f"{y}.png")
+            save_path = tiles_dir / str(z) / str(x) / f"{y}.png"
             return await download_tile(session, z, x, y, save_path)
-    
+
     async with aiohttp.ClientSession() as session:
         # Запускаем все задачи с ограничением
         results = await asyncio.gather(*[limited_download(z, x, y) for (z, x, y) in tasks])
-    
+
     failed = results.count(False)
     return total - failed, failed
 
@@ -870,8 +879,10 @@ async def start_http_server():
     app.router.add_get('/', index_page)
     app.router.add_get('/map.css', map_css)
     app.router.add_get('/map.js', map_js)
+    app.router.add_get('/industrial.css', industrial_css)
     app.router.add_get('/tile_download', tile_download_page)
-    app.router.add_static('/tiles', 'templates/tiles')
+    TILES_DIR.mkdir(parents=True, exist_ok=True)
+    app.router.add_static('/tiles', TILES_DIR)
     app.router.add_post('/api/download_tiles', api_download_tiles)
     app.router.add_get('/api/download_status', api_download_status)
     app.router.add_post('/api/cancel_download', api_cancel_download)
